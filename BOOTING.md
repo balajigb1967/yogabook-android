@@ -1,18 +1,32 @@
 # Flashing & First Boot — Yoga Book YB1-X91F
 
-## ⚡ One-touch install (NO keyboard needed)
-1. Flash the ISO to USB (step 2 below) and plug it into the Yoga Book.
-2. Power on holding **Volume Up** → pick USB.
-3. **Do nothing.** The default GRUB entry (3 s) starts the guarded
-   auto-installer: it **wipes the internal eMMC completely** — new partition
-   table, old boot signatures zeroed, so any previous Windows/Android
-   install is gone — then copies Android over, installs GRUB, and
-   **powers the tablet off by itself**. All of this only after the DMI/eMMC
-   guards pass and the 10-second on-screen abort window expires.
-4. Remove the USB stick, power on → Android boots from eMMC.
+## ⚡ One-touch install to SD card (NO keyboard needed, Windows kept)
+**You need: a microSD card, 8 GB+ (class 10/UHS recommended), inserted in the
+Yoga Book's SD slot. Everything on the SD card is erased.**
 
-(To just try it live without installing, pick the second GRUB entry
-"Live boot (no install)" — but that needs arrow keys/USB keyboard.)
+1. Flash the ISO to USB (step 2 below) and plug it into the Yoga Book.
+2. Insert the microSD card into the tablet.
+3. Power on holding **Volume Up** → pick USB.
+4. **Do nothing.** The default GRUB entry (3 s) starts the guarded
+   auto-installer, which now targets the **SD card**: it erases the SD,
+   installs Android + GRUB on it with a persistent ext4 data partition, and
+   **powers the tablet off by itself**. **Windows on eMMC is never touched.**
+5. Remove the USB stick, keep the SD card in, power on →
+   pick the **SD entry** in the Volume-Up boot menu → Android boots from SD.
+   (If the firmware menu doesn't list SD, boot the USB stick's "Live boot"
+   entry once and we'll add an eMMC chainload entry.)
+
+Multi-boot summary: **Volume-Up menu = OS picker** — SD entry → Android,
+eMMC/Windows entry → Windows. Switching needs no keyboard.
+
+### Other GRUB entries on the stick
+- **Live boot (no install)** — try Android without installing anything
+- **WIPE eMMC & install Android** — opt-in only; **erases Windows** and makes
+  the tablet Android-only (runs the old eMMC flow, 10 s abort window)
+
+All installs are **full wipes of their target** (new partition table + old
+boot signatures zeroed) — no leftovers survive, and it only runs after the
+DMI/eMMC guards pass and the 10-second on-screen abort window expires.
 
 ---
 
@@ -68,11 +82,12 @@ route, but the YB1's own boot menu skips DD sticks — ISO mode it is.)*
 **Keep a USB keyboard plugged in for the Android setup wizard** (WiFi sign-in, account).
 Screen rotation may need the auto-rotate toggle in quick settings.
 
-## 5. Install to eMMC (dual-boot with Windows)
-1. In the live session, open GRUB's second entry (`Installation`) or the installer app.
-2. Target the eMMC (`mmcblk…`/`sda…`) — the `Install` option creates an ext4 data image next to the ISO files if installing to the USB stick's own partition (frugal install), or wipes a chosen partition.
-3. **Windows stays bootable** if you pick a free partition rather than wiping the disk; the installer adds a GRUB entry.
-4. Reboot without the stick, hold Volume Up → pick the new *Bliss OS* entry.
+## 5. Install target options
+- **SD card (default):** Android + persistent data on the card; Windows
+  untouched. Re-run the installer any time to re-wipe/reinstall the SD.
+- **eMMC (opt-in via GRUB entry):** wipes Windows, Android-only tablet.
+- **Live boot:** nothing installed; user data resets each boot unless you
+  add a persistence option later.
 
 ## 6. Troubleshooting
 ### USB stick not detected in the boot menu (most common YB1 issue)

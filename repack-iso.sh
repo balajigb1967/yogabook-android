@@ -8,14 +8,13 @@
 #   busybox-yb            static busybox (fdisk/mkdosfs/mke2fs) used by installer
 #   firmware/*            extra firmware (e.g. sof-cht-rt5677.tplg)
 #
-# What it does:
-#   1. Extracts the Bliss/Bass 16.9.7 ISO
-#   2. Replaces /kernel with the Yoga Book kernel
-#   3. Injects into initrd.img: our module tree, firmware, and the
-#      yogabook-autostall one-touch installer (guarded: only wipes the
-#      internal eMMC on a verified Yoga Book; otherwise boots normally)
-#   4. Writes a GRUB config whose DEFAULT entry (3s) is the auto-install
-#   5. Rebuilds a hybrid bootable ISO with the original boot records
+# Install design (default):
+#   * Android is installed onto a REMOVABLE SD CARD (mmcblk, removable=1)
+#   * the internal eMMC (and any Windows install on it) is NEVER touched
+#   * SD layout: p1 FAT32 ESP (grub + kernel + initrd + system.sfs),
+#                p2 ext4 DATA (persistent user data)
+#   * multi-boot: Volume-Up firmware menu picks SD (Android) / eMMC (Windows)
+#   * an explicit GRUB entry opts into wiping the eMMC instead (YB_TARGET=emmc)
 set -euo pipefail
 
 BASE="${1:?usage: repack-iso.sh <base.iso> <bzImage> <modules.tar.gz> <out.iso> [assets-dir] [KREL-file]}"
@@ -69,70 +68,68 @@ if [[ -n "$ASSETS" && -d "$ASSETS/firmware" ]]; then
     done
 fi
 
-# ---- the one-touch installer ----
+# ---- the guarded installer (SD default, eMMC only on explicit opt-in) ----
 cat > "$WORK/initrd/sbin/yogabook-autostall" <<'INSTALLER'
 #!/bin/sh
 # yogabook-autostall — one-touch Android-x86 installer for Lenovo Yoga Book.
-# Guards: correct DMI + exactly one non-removable eMMC; otherwise this
-# script exits 0 and the normal Android-x86 live boot continues untouched.
+#
+# Default: install to a REMOVABLE SD CARD (Windows on eMMC untouched).
+# cmdline YB_TARGET=emmc switches to the destructive eMMC wipe install.
 # All output goes to console so the user sees every step.
 exec >/dev/console 2>&1
+BB=/sbin/yb-busybox
+[ -x "$BB" ] || { echo "[YB] no installer toolbox"; exit 0; }
+
+mount -t proc proc /proc 2>/dev/null
+CMD="$(cat /proc/cmdline 2>/dev/null)"
+umount /proc 2>/dev/null
 
 DMI="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
 case "$DMI" in
     YB1-X91F|YB1-X91L|YB1-X90F|YB1-X90L) : ;;
-    *) echo "not a Yoga Book ($DMI) - skipping auto-install"; exit 0 ;;
+    *) echo "[YB] not a Yoga Book ($DMI) - skipping auto-install"; exit 0 ;;
 esac
 
-[ -x /sbin/yb-busybox ] || { echo "no installer toolbox"; exit 0; }
-BB=/sbin/yb-busybox
+case "$CMD" in
+    *YB_TARGET=emmc*) TARGET=emmc ;;
+    *)                TARGET=sd ;;
+esac
 
-# find the internal eMMC (non-removable mmcblk without boot0/1 ambiguity)
-EMMC=""
+# ---- pick the target device ----
+if [ "$TARGET" = "emmc" ]; then
+    WANT_REMOVABLE=0
+    echo "[YB] MODE: wipe eMMC and install Android (WINDOWS WILL BE ERASED)"
+else
+    WANT_REMOVABLE=1
+    echo "[YB] MODE: install to SD card (Windows on eMMC stays untouched)"
+fi
+
+TGT=""
 COUNT=0
 for d in /sys/block/mmcblk*; do
     [ -e "$d" ] || continue
-    [ "$($BB cat "$d/removable" 2>/dev/null)" = "0" ] || continue
-    EMMC="/dev/$(basename "$d")"
+    [ "$($BB cat "$d/removable" 2>/dev/null)" = "$WANT_REMOVABLE" ] || continue
+    TGT="/dev/$(basename "$d")"
     COUNT=$((COUNT+1))
 done
-[ "$COUNT" = "1" ] && [ -n "$EMMC" ] || { echo "eMMC not uniquely identified (count=$COUNT)"; exit 0; }
-P1="${EMMC}p1"; P2="${EMMC}p2"
+if [ "$TARGET" = "emmc" ]; then
+    [ "$COUNT" = "1" ] && [ -n "$TGT" ] || { echo "[YB] eMMC not uniquely identified (count=$COUNT)"; exit 0; }
+else
+    [ "$COUNT" = "1" ] && [ -n "$TGT" ] || {
+        echo "[YB] no removable SD card found (count=$COUNT) - insert one and reboot, or use the eMMC menu entry"
+        exit 0
+    }
+fi
+P1="${TGT}p1"; P2="${TGT}p2"
+echo "[YB] target device: $TGT"
 
-echo "!!!! AUTO-INSTALL: erasing $EMMC in 10 seconds — POWER OFF NOW TO ABORT !!!!"
-sleep 10
-
-# obliterate ALL previous installation signatures (old GRUB, Windows Boot
-# Manager, stale GPT) so the firmware cannot pick up anything old
-$BB dd if=/dev/zero of="$EMMC" bs=1M count=2 2>/dev/null || true
-
-$BB fdisk "$EMMC" <<FD
-o
-n
-p
-1
-
-+64M
-t
-c
-n
-p
-2
-
-
-w
-FD
-$BB mkdosfs -n EFI "$P1"
-$BB mke2fs -F -t ext4 -L DATA "$P2"
-
-# locate the boot media by CONTENT (DD-isohybrid stick, Rufus FAT32 stick,
-# or real ISO9660). Skips the eMMC we just (re)formatted.
+# ---- locate the boot media by CONTENT (skips the target) ----
 mkdir -p /mnt/src
 SRCDEV=""
 for dev in /dev/sr0 /dev/sd[a-z] /dev/sd[a-z][0-9] /dev/mmcblk[0-9] /dev/mmcblk[0-9]p[0-9]; do
     [ -b "$dev" ] || continue
     case "$dev" in
-        "$EMMC"|"$P1"|"$P2") continue ;;
+        "$TGT"|"$P1"|"$P2") continue ;;
     esac
     if $BB mount -o ro "$dev" /mnt/src 2>/dev/null; then
         if [ -f /mnt/src/kernel ] && { [ -f /mnt/src/system.sfs ] || [ -f /mnt/src/system.img ]; }; then
@@ -142,39 +139,86 @@ for dev in /dev/sr0 /dev/sd[a-z] /dev/sd[a-z][0-9] /dev/mmcblk[0-9] /dev/mmcblk[
         $BB umount /mnt/src 2>/dev/null
     fi
 done
-[ -n "$SRCDEV" ] || { echo "cannot find boot media"; exit 1; }
-echo "boot media: $SRCDEV"
+[ -n "$SRCDEV" ] || { echo "[YB] cannot find boot media"; exit 1; }
+echo "[YB] boot media: $SRCDEV"
 
-# stage: kernel+initrd on the ESP, ramdisk/system/data sfs on DATA:/android
-mkdir -p /mnt/efi /mnt/data/android
-$BB mount "$P1" /mnt/efi || { echo "ESP mount failed"; exit 1; }
-$BB mount "$P2" /mnt/data || { echo "DATA mount failed"; exit 1; }
+# refuse to install onto the medium we are booting from
+case "$SRCDEV" in
+    "$TGT"|"$P1"|"$P2") echo "[YB] target == boot media - refusing"; exit 1 ;;
+esac
+
+if [ "$TARGET" != "emmc" ]; then
+    SIZE="$($BB blockdev --getsize64 "$TGT" 2>/dev/null || echo 0)"
+    if [ "$SIZE" -lt 4000000000 ] 2>/dev/null; then
+        echo "[YB] SD card too small (<4GB) - aborting"; exit 1
+    fi
+fi
+
+echo "!!!! AUTO-INSTALL: erasing $TGT in 10 seconds — POWER OFF NOW TO ABORT !!!!"
+sleep 10
+
+# obliterate ALL previous installation signatures (old GRUB, Windows Boot
+# Manager, stale GPT) so nothing old can be picked up by the firmware
+$BB dd if=/dev/zero of="$TGT" bs=1M count=2 2>/dev/null || true
+
+$BB fdisk "$TGT" <<FD
+o
+n
+p
+1
+
++256M
+t
+c
+n
+p
+2
+
+
+w
+FD
+$BB mkdosfs -n ANDROID "$P1"
+$BB mke2fs -F -t ext4 -L DATA "$P2"
+
+# ---- stage files ----
+mkdir -p /mnt/efi
+$BB mount "$P1" /mnt/efi || { echo "[YB] ESP mount failed"; exit 1; }
 cp /mnt/src/kernel /mnt/src/initrd.img /mnt/efi/
 for f in /mnt/src/ramdisk.img /mnt/src/system.sfs /mnt/src/system.img; do
-    [ -f "$f" ] && cp "$f" /mnt/data/android/
+    [ -f "$f" ] && cp "$f" /mnt/efi/
 done
-[ -d /mnt/src/data ] && cp -r /mnt/src/data/. /mnt/data/android/data/ 2>/dev/null
 
-# EFI bootloader: reuse the ISO's grub, add our menu
 if [ -d /mnt/src/EFI/BOOT ]; then
     mkdir -p /mnt/efi/EFI
     cp -r /mnt/src/EFI/BOOT /mnt/efi/EFI/
 fi
 
 cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
-set timeout=0
+set timeout=1
 set default=0
-menuentry "BlissOS-YogaBook" {
+menuentry "Android (Bass OS 16.9.7) — installed on SD" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel quiet root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/android DATA=$P2
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive DATA=$P2
+    initrd /initrd.img
+}
+menuentry "Install Android to eMMC (WIPES WINDOWS)" {
+    search --no-floppy --file /kernel --set=root
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=emmc
     initrd /initrd.img
 }
 GRUB
-$BB sed -i "s|DATA=$P2|DATA=$P2|" /mnt/efi/EFI/BOOT/grub.cfg
+# some firmwares read /EFI/BOOT/grub/grub.cfg instead
+mkdir -p /mnt/efi/EFI/BOOT/grub 2>/dev/null || true
+cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/grub/grub.cfg 2>/dev/null || true
+$BB umount /mnt/efi
 
-$BB umount /mnt/efi /mnt/data /mnt/src 2>/dev/null
 sync
-echo "AUTO-INSTALL COMPLETE - powering off"
+if [ "$TARGET" = "emmc" ]; then
+    echo "[YB] AUTO-INSTALL COMPLETE (eMMC wiped, Android installed) - powering off"
+else
+    echo "[YB] AUTO-INSTALL COMPLETE (SD card ready) - remove USB stick; keep SD in"
+    echo "[YB] Power on and pick the SD entry in the Volume-Up boot menu."
+fi
 sleep 2
 poweroff -f
 exit 0
@@ -191,7 +235,7 @@ if [ -f "$WORK/initrd/init.orig" ]; then
 mount -t proc proc /proc 2>/dev/null
 if ! grep -q 'YB_INSTALL=0' /proc/cmdline 2>/dev/null; then
     echo "[YB] auto-installer starting (pass YB_INSTALL=0 to skip)..."
-    /sbin/yogabook-autostall || { echo "[YB] installer failed - continuing to live boot"; }
+    /sbin/yogabook-autostall || { echo "[YB] installer did not run - continuing to live boot"; }
 fi
 umount /proc 2>/dev/null
 if [ -x /init.orig ]; then
@@ -219,7 +263,7 @@ if [[ -f "$WORK/iso/ramdisk.img" ]]; then
         > "$WORK/iso/ramdisk.img"
 fi
 
-# ---- GRUB: auto-install is the DEFAULT entry, 3s timeout ----
+# ---- ISO GRUB: SD install is the DEFAULT entry, 3s timeout ----
 GRUBCFG="$WORK/iso/boot/grub/grub.cfg"
 [[ -f "$GRUBCFG" ]] || GRUBCFG="$(find "$WORK/iso" -name grub.cfg | head -n1)"
 if [[ -f "$GRUBCFG" ]]; then
@@ -229,7 +273,7 @@ if [[ -f "$GRUBCFG" ]]; then
 set timeout=3
 set default=0
 set fallback=1
-menuentry "Yoga Book — AUTO-INSTALL Android (erases internal eMMC)" {
+menuentry "Yoga Book — AUTO-INSTALL to SD card (Windows untouched)" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive
     initrd /initrd.img
@@ -237,6 +281,11 @@ menuentry "Yoga Book — AUTO-INSTALL Android (erases internal eMMC)" {
 menuentry "Yoga Book — Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_INSTALL=0
+    initrd /initrd.img
+}
+menuentry "Yoga Book — WIPE eMMC & install Android (erases Windows)" {
+    search --no-floppy --file /kernel --set=root
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=emmc
     initrd /initrd.img
 }
 GRUB
@@ -249,7 +298,9 @@ fi
 # ---- rebuild the ISO preserving the original El Torito boot records ----
 OPTS="$(xorriso -indev "$BASE" -report_el_torito as_mkisofs 2>/dev/null | tr '\n' ' ' | xargs || true)"
 echo ">>> Rebuilding $OUT (boot opts: ${OPTS:-<fallback BIOS-only>})"
-rm -f "$OUT"GPT=""
+rm -f "$OUT"
+
+GPT=""
 case " $OPTS " in
     # -efi-boot-part --efi-boot-image: embed the El Torito UEFI image as a real
     # GPT EFI System Partition — strict firmwares (YB1 Insyde) only enumerate
