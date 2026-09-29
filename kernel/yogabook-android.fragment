@@ -47,11 +47,9 @@ CONFIG_HIDRAW=y
 CONFIG_UHID=y
 CONFIG_TOUCHSCREEN_GOODIX=y
 
-# ---- Audio machine drivers (Intel SST + Realtek RT5645) ----
-# YB1-X91F is Cherry Trail (Z8550); keep both machine drivers as modules so
-# either BYT-CR or CHT-BSW enumeration succeeds.
-CONFIG_SND_SOC_INTEL_BYTCR_RT5645_MACH=m
-CONFIG_SND_SOC_INTEL_CHT_BSW_RT5645_MACH=m
+# ---- Audio ----
+# jekhor's tree ships SND_SOC_INTEL_CHT_YOGABOOK_MACH (dedicated Yoga Book
+# RT5645/SST machine driver, already =m in yogabook_defconfig) — nothing to add.
 
 # ---- Versioning ----
 CONFIG_LOCALVERSION="-yogabook-bass"

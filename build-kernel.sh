@@ -36,7 +36,8 @@ fi
 cd "$LINUX"
 
 echo ">>> Configuring: yogabook_defconfig + Android fragment"
-make O=out arch/x86/configs/yogabook_defconfig
+mkdir -p out
+cp arch/x86/configs/yogabook_defconfig out/.config
 ./scripts/kconfig/merge_config.sh -m -O out out/.config "$FRAGMENT"
 make O=out olddefconfig
 
