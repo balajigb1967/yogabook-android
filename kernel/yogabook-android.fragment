@@ -59,3 +59,11 @@ CONFIG_LOCALVERSION_AUTO=n
 # their build env; empty them so our build doesn't fail on missing files.
 CONFIG_SYSTEM_TRUSTED_KEYS=""
 CONFIG_SYSTEM_REVOCATION_KEYS=""
+
+# ---- No DWARF/BTF needed for Android ----
+# Their deb config carries Ubuntu's DEBUG_INFO_BTF=y; the resolve_btfids
+# host tool is fragile on CI and BTF is not used by Android-x86 at all.
+# Disabling also shrinks vmlinux and cuts build time substantially.
+CONFIG_DEBUG_INFO_NONE=y
+# CONFIG_DEBUG_INFO_BTF is not set
+# CONFIG_DEBUG_INFO_BTF_MODULES is not set
