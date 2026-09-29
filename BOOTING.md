@@ -4,9 +4,11 @@
 1. Flash the ISO to USB (step 2 below) and plug it into the Yoga Book.
 2. Power on holding **Volume Up** → pick USB.
 3. **Do nothing.** The default GRUB entry (3 s) starts the guarded
-   auto-installer: it erases the internal eMMC (only after verifying the
-   device really is a Yoga Book), copies Android over, installs GRUB, and
-   **powers the tablet off by itself**.
+   auto-installer: it **wipes the internal eMMC completely** — new partition
+   table, old boot signatures zeroed, so any previous Windows/Android
+   install is gone — then copies Android over, installs GRUB, and
+   **powers the tablet off by itself**. All of this only after the DMI/eMMC
+   guards pass and the 10-second on-screen abort window expires.
 4. Remove the USB stick, power on → Android boots from eMMC.
 
 (To just try it live without installing, pick the second GRUB entry
