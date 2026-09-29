@@ -23,6 +23,27 @@ FRAGMENT="$(cd "$(dirname "$0")" && pwd)/kernel/yogabook-android.fragment"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"   # absolute: we cd into linux/ below
 
+# CI cache hygiene: a restored `linux/` may be partial (out-only) or stale (ref changed)
+if [[ -d "$LINUX" && ! -f "$LINUX/Makefile" ]]; then
+    echo ">>> Partial kernel tree from cache — resetting"
+    rm -rf "$LINUX"
+fi
+if [[ -d "$LINUX" && "$(cat "$LINUX/.yb-ref" 2>/dev/null)" != "$KERNEL_REF" ]]; then
+    echo ">>> Kernel ref changed — recloning"
+    rm -rf "$LINUX"
+fi
+
+# ccache: objects persist between CI runs (via the ~/.ccache cache), so an
+# unchanged kernel rebuilds in minutes instead of an hour
+export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
+export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-3G}"
+export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
+export CCACHE_COMPILERCHECK=content
+CC="gcc"
+if command -v ccache >/dev/null 2>&1; then
+    CC="ccache gcc"
+fi
+
 if [[ -n "${KERNEL_SRC:-}" ]]; then
     LINUX="$KERNEL_SRC"
     echo ">>> Using existing kernel tree: $LINUX"
@@ -44,6 +65,7 @@ BASE_CFG="$(find "$WORKROOT/debx/boot" -name 'config-*' | head -n1)"
 echo "    using $(basename "$BASE_CFG")"
 
 cd "$LINUX"
+echo "$KERNEL_REF" > "$LINUX/.yb-ref"
 echo ">>> Configuring: Yoga-Book validated config + Android fragment"
 mkdir -p out
 cp "$BASE_CFG" out/.config
@@ -58,7 +80,7 @@ for sym in CONFIG_ANDROID_BINDERFS CONFIG_INPUT_UINPUT CONFIG_HIDRAW \
 done
 
 echo ">>> Building bzImage + modules (-j$JOBS)"
-make O=out -j"$JOBS" bzImage modules
+make O=out CC="$CC" -j"$JOBS" bzImage modules
 
 KREL="$(make -s O=out kernelrelease)"
 echo ">>> Kernel release: $KREL"
