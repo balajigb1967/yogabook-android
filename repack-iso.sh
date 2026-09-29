@@ -122,14 +122,25 @@ FD
 $BB mkdosfs -n EFI "$P1"
 $BB mke2fs -F -t ext4 -L DATA "$P2"
 
-# locate the boot media (this ISO)
-SRCDEV=""
-for m in /proc/mounts; do :; done
-SRCDEV="$($BB blkid 2>/dev/null | $BB awk -F: '/iso9660/{print $1; exit}')"
-[ -n "$SRCDEV" ] || SRCDEV="$($BB awk '$3=="iso9660"{print $1; exit}' /proc/mounts)"
-[ -n "$SRCDEV" ] || { echo "cannot find ISO media"; exit 1; }
+# locate the boot media by CONTENT (DD-isohybrid stick, Rufus FAT32 stick,
+# or real ISO9660). Skips the eMMC we just (re)formatted.
 mkdir -p /mnt/src
-$BB mount -t iso9660 "$SRCDEV" /mnt/src || $BB mount "$SRCDEV" /mnt/src || { echo "mount failed"; exit 1; }
+SRCDEV=""
+for dev in /dev/sr0 /dev/sd[a-z] /dev/sd[a-z][0-9] /dev/mmcblk[0-9] /dev/mmcblk[0-9]p[0-9]; do
+    [ -b "$dev" ] || continue
+    case "$dev" in
+        "$EMMC"|"$P1"|"$P2") continue ;;
+    esac
+    if $BB mount -o ro "$dev" /mnt/src 2>/dev/null; then
+        if [ -f /mnt/src/kernel ] && { [ -f /mnt/src/system.sfs ] || [ -f /mnt/src/system.img ]; }; then
+            SRCDEV="$dev"
+            break
+        fi
+        $BB umount /mnt/src 2>/dev/null
+    fi
+done
+[ -n "$SRCDEV" ] || { echo "cannot find boot media"; exit 1; }
+echo "boot media: $SRCDEV"
 
 # stage: kernel+initrd on the ESP, ramdisk/system/data sfs on DATA:/android
 mkdir -p /mnt/efi /mnt/data/android
@@ -225,10 +236,13 @@ fi
 # ---- rebuild the ISO preserving the original El Torito boot records ----
 OPTS="$(xorriso -indev "$BASE" -report_el_torito as_mkisofs 2>/dev/null | tr '\n' ' ' | xargs || true)"
 echo ">>> Rebuilding $OUT (boot opts: ${OPTS:-<fallback BIOS-only>})"
-rm -f "$OUT"
-
-GPT=""
-case " $OPTS " in *" -e "*) GPT="-isohybrid-gpt-basdat" ;; esac
+rm -f "$OUT"GPT=""
+case " $OPTS " in
+    # -efi-boot-part --efi-boot-image: embed the El Torito UEFI image as a real
+    # GPT EFI System Partition — strict firmwares (YB1 Insyde) only enumerate
+    # USB sticks whose GPT has an ESP-typed partition.
+    *" -e "*) GPT="-isohybrid-gpt-basdat -efi-boot-part --efi-boot-image" ;;
+esac
 
 if [[ -n "$OPTS" ]] && eval "xorriso -as mkisofs -o \"$OUT\" \
         -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin $GPT $OPTS \"$WORK/iso\"" 2>&1 | tail -3; then
