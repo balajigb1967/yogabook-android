@@ -38,9 +38,10 @@ jobs:
             cpio lz4 xorriso isolinux syslinux-common \
             zstd xz-utils curl ca-certificates
           # isohybrid MBR path differs across distros; normalize it
-          sudo mkdir -p /usr/lib/ISOLINUX
-          sudo cp /usr/lib/syslinux/modules/bios/isohdpfx.bin /usr/lib/ISOLINUX/isohdpfx.bin \
-            || sudo cp /usr/lib/ISOLINUX/isohdpfx.bin /usr/lib/ISOLINUX/isohdpfx.bin
+          if [ -f /usr/lib/syslinux/modules/bios/isohdpfx.bin ]; then
+            sudo mkdir -p /usr/lib/ISOLINUX
+            sudo cp /usr/lib/syslinux/modules/bios/isohdpfx.bin /usr/lib/ISOLINUX/isohdpfx.bin
+          fi
 
       - name: Locate Bliss 16.9.7 base ISO URL
         id: base
