@@ -67,7 +67,7 @@ jobs:
           ls -lh base.iso
 
       - name: Build Yoga Book kernel
-        run: ./build-kernel.sh
+        run: bash ./build-kernel.sh
         env:
           KERNEL_REF: master
           JOBS: "2"
@@ -75,7 +75,7 @@ jobs:
       - name: Repack ISO with Yoga Book kernel + modules
         run: |
           KREL="$(cat artifacts/KREL)"
-          ./repack-iso.sh base.iso "artifacts/bzImage-$KREL" \
+          bash ./repack-iso.sh base.iso "artifacts/bzImage-$KREL" \
             "artifacts/modules-$KREL.tar.gz" \
             "YogaBook-BassOS-16.9.7-$(date +%Y%m%d)-x86_64.iso"
 
