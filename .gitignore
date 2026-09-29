@@ -3,3 +3,4 @@ artifacts/
 base.iso
 *.iso
 modout/
+joblog*.txt
