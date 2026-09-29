@@ -70,16 +70,24 @@ Screen rotation may need the auto-rotate toggle in quick settings.
 
 ## 6. Troubleshooting
 ### USB stick not detected in the boot menu (most common YB1 issue)
-1. **BIOS → Configuration → USB → USB Host Mode = Enabled** — the YB1's
-   micro-USB port defaults to *device* mode; until you flip this, USB sticks
-   are invisible to the tablet. This is Yoga-Book-specific and the #1 cause.
-2. **BIOS → Security → Secure Boot = Disabled** (required for our unsigned GRUB).
-3. Plug the stick in **before** power-on, through a **powered OTG hub**
+> **X91F note:** unlike the Android X90 model, the X91F BIOS has **no
+> "USB Host Mode" toggle** — its micro-USB port is always host. Skip any
+> advice about enabling it.
+
+1. **BIOS → Boot tab:** Boot Mode = **UEFI**, Boot Priority = **UEFI First**,
+   and **USB Boot = Enabled** if present. (Security → Secure Boot = Disabled.)
+2. **Verify the DD write on Windows:** a correct DD flash makes the stick show
+   up *shrunken (~2.9 GB)* with odd/unformattable partitions — normal. If you
+   can browse the ISO files like a normal drive, it was written in ISO mode →
+   re-flash with Rufus in **DD Image mode**.
+3. **Skip the BIOS entirely (recommended, Windows still installed):**
+   hold **Shift + Restart** in Windows → *Troubleshoot → Advanced options →
+   **Use a device*** → pick the USB stick. Windows' own boot manager launches
+   our ISO — no Volume-Up menu needed.
+4. Plug the stick in **before** power-on, through a **powered OTG hub**
    (the micro port is weak — unpowered adapters often fail to enumerate sticks).
-4. Still nothing? Try a single OTG adapter instead of a hub, or another stick
+5. Still nothing? Try a single OTG adapter instead of a hub, or another stick
    (the YB1 is picky about USB controllers).
-5. Sanity-check the stick on another PC's UEFI boot menu — if it doesn't boot
-   anywhere, re-flash (Rufus, **GPT + DD image mode**).
 
 - **Black screen on boot:** at the GRUB menu press `e`, add `video=DSI-1:1200x1920@60` or `i915.modeset=0` (diagnostic only) to the `linux` line.
 - **No boot menu at all:** USB wasn't flashed in DD mode, or Secure Boot is still on.
