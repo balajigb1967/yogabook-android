@@ -27,20 +27,24 @@
 3. Save & exit (F10), power off.
 
 ## 2. Flash the USB stick
+**YB1-X91F reality check (field-tested):** this tablet's firmware enumerates
+**Rufus-ISO-mode** sticks reliably; **Rufus-DD-mode sticks are NOT detected**
+in its boot menu regardless of the ISO's embedded boot records. Use ISO mode.
+
 **Rufus settings:**
 
 | Setting | Value |
 |---|---|
 | Boot selection | the YogaBook ISO |
-| Partition scheme | **GPT** *(ignored in DD mode — the ISO is hybrid and embeds its own MBR+GPT boot records)* |
-| Target system | UEFI (non CSM) *(ignored in DD mode)* |
-| File system / cluster | defaults *(ignored in DD mode)* |
+| Partition scheme | **GPT** |
+| Target system | **UEFI (non CSM)** |
+| At the "ISOHybrid" prompt | **ISO Image mode** (not DD — see note above) |
 
-Press **START** → when Rufus asks *"ISOHybrid image detected"* → **choose DD Image mode**
-(not the "Recommended" ISO mode — Android-x86 isolinux images boot unreliably through it).
 After flashing Windows will ask to format the stick — **Cancel, never format**.
 
-- **Etcher (alternative):** select ISO → USB → Flash (always raw-write, no options needed).
+*(DD mode / Etcher raw-write works on generic PCs and with the "Use a device"
+route, but the YB1's own boot menu skips DD sticks — ISO mode it is.)*
+
 - Verify SHA256 against the build output if you like.
 
 ## 3. Boot from USB
