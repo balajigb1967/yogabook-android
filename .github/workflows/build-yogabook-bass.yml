@@ -1,0 +1,104 @@
+name: Build Yoga Book Bass OS 16.9.7
+
+# Builds the Yoga Book (YB1-X91F) kernel from jekhor/yogabook-linux-kernel,
+# injects it (kernel + modules) into a Bliss/Bass 16.9.7 x86_64 ISO and
+# repacks it as a bootable hybrid ISO.
+#
+# Free ubuntu-latest runners are 2-core/7GB-RAM: kernel build takes ~45-75 min.
+# Keep the repo PUBLIC for unlimited free Linux runner minutes.
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - "**.md"
+  workflow_dispatch:
+    inputs:
+      base_iso_variant:
+        description: "Bliss 16.9.7 variant (foss | gapps | vanilla)"
+        required: false
+        default: "foss"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc bison flex libelf-dev libssl-dev \
+            cpio lz4 xorriso isolinux syslinux-common \
+            zstd xz-utils curl ca-certificates
+          # isohybrid MBR path differs across distros; normalize it
+          sudo mkdir -p /usr/lib/ISOLINUX
+          sudo cp /usr/lib/syslinux/modules/bios/isohdpfx.bin /usr/lib/ISOLINUX/isohdpfx.bin \
+            || sudo cp /usr/lib/ISOLINUX/isohdpfx.bin /usr/lib/ISOLINUX/isohdpfx.bin
+
+      - name: Locate Bliss 16.9.7 base ISO URL
+        id: base
+        run: |
+          VARIANT="${{ github.event.inputs.base_iso_variant || 'foss' }}"
+          RSS="https://sourceforge.net/projects/blissos-x86/rss?path=/Official/BlissOS16"
+          XML="$(curl -fsSL --retry 3 "$RSS")"
+          URL="$(echo "$XML" | grep -oE '<link>[^<]+\.iso/download</link>' \
+                 | sed -E 's#</?link>##g' | grep '16\.9\.7' \
+                 | grep -i "$VARIANT" | grep -iv 'surface\|/go/' | head -n1 || true)"
+          if [ -z "$URL" ]; then
+            URL="$(echo "$XML" | grep -oE '<link>[^<]+\.iso/download</link>' \
+                   | sed -E 's#</?link>##g' | grep '16\.9\.7' | head -n1 || true)"
+          fi
+          [ -n "$URL" ] || { echo "::error::No Bliss 16.9.7 ISO found in RSS"; exit 1; }
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Base ISO: $URL"
+
+      - name: Download base ISO
+        run: |
+          curl -fL --retry 3 --retry-delay 5 \
+            -o base.iso "${{ steps.base.outputs.url }}"
+          ls -lh base.iso
+
+      - name: Build Yoga Book kernel
+        run: ./build-kernel.sh
+        env:
+          KERNEL_REF: master
+          JOBS: "2"
+
+      - name: Repack ISO with Yoga Book kernel + modules
+        run: |
+          KREL="$(cat artifacts/KREL)"
+          ./repack-iso.sh base.iso "artifacts/bzImage-$KREL" \
+            "artifacts/modules-$KREL.tar.gz" \
+            "YogaBook-BassOS-16.9.7-$(date +%Y%m%d)-x86_64.iso"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yogabook-bass-iso
+          path: |
+            YogaBook-BassOS-*.iso
+            artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach ISO to GitHub Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISO="$(ls YogaBook-BassOS-*.iso | head -n1)"
+          if [ "$(stat -c%s "$ISO")" -lt 2000000000 ]; then
+            gh release create "yogabook-$(date +%Y%m%d-%H%M)" "$ISO" \
+              --title "Yoga Book Bass OS 16.9.7" \
+              --notes "Bliss/Bass 16.9.7 with Yoga Book (YB1-X91F) kernel from jekhor/yogabook-linux-kernel + Android binder config. Flash to USB and boot holding Volume Up." \
+              || gh release upload "$(gh release list -L1 --json tagName -q '.[0].tagName')" "$ISO" --clobber
+          else
+            echo "ISO >2 GiB release limit; keeping it as workflow artifact only"
+          fi

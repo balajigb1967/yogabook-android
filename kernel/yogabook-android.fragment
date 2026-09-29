@@ -1,0 +1,57 @@
+# Yoga Book (YB1-X91F) -> Bass/Bliss 16.9.7 (Android-x86, Android 13)
+# Merged on top of arch/x86/configs/yogabook_defconfig via merge_config.sh.
+# Every symbol is additive/overriding only — everything already correct in
+# yogabook_defconfig (Goodix halo controller, Wacom digitizer, RT5645 codec,
+# battery charger, KXCJ9 accelerometer, i915, brcmfmac) is left untouched.
+
+# ---- Android runtime requirements ----
+CONFIG_ANDROID=y
+CONFIG_ANDROID_BINDER_IPC=y
+CONFIG_ANDROID_BINDERFS=y
+CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"
+# lmkd / Android memory management
+CONFIG_PSI=y
+CONFIG_MEMCG=y
+
+# ---- Android-x86 live-boot essentials (initrd) ----
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_TMPFS=y
+CONFIG_TMPFS_POSIX_ACL=y
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_XZ=y
+CONFIG_SQUASHFS_LZ4=y
+CONFIG_SQUASHFS_ZSTD=y
+CONFIG_ISO9660_FS=y
+CONFIG_JOLIET=y
+CONFIG_ZISOFS=y
+CONFIG_BLK_DEV_LOOP=y
+CONFIG_EXT4_FS=y
+CONFIG_VFAT_FS=y
+CONFIG_NLS_CODEPAGE_437=y
+CONFIG_NLS_ASCII=y
+CONFIG_NLS_ISO8859_1=y
+CONFIG_EFI_STUB=y
+CONFIG_EFIVAR_FS=y
+
+# ---- Early graphics ----
+CONFIG_DRM=y
+CONFIG_DRM_I915=y
+CONFIG_SYSFB_SIMPLEFB=y
+CONFIG_DRM_SIMPLEDRM=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+
+# ---- Yoga Book input devices as seen by Android userspace ----
+CONFIG_INPUT_UINPUT=y
+CONFIG_HIDRAW=y
+CONFIG_UHID=y
+CONFIG_TOUCHSCREEN_GOODIX=y
+
+# ---- Audio machine drivers (Intel SST + Realtek RT5645) ----
+# YB1-X91F is Cherry Trail (Z8550); keep both machine drivers as modules so
+# either BYT-CR or CHT-BSW enumeration succeeds.
+CONFIG_SND_SOC_INTEL_BYTCR_RT5645_MACH=m
+CONFIG_SND_SOC_INTEL_CHT_BSW_RT5645_MACH=m
+
+# ---- Versioning ----
+CONFIG_LOCALVERSION="-yogabook-bass"
