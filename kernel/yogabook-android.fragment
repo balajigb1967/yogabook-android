@@ -53,3 +53,9 @@ CONFIG_UHID=y
 # ---- Versioning ----
 CONFIG_LOCALVERSION="-yogabook-bass"
 CONFIG_LOCALVERSION_AUTO=n
+
+# ---- Build-environment neutralization ----
+# Their .deb config may point at signing/trusted keys that only exist in
+# their build env; empty them so our build doesn't fail on missing files.
+CONFIG_SYSTEM_TRUSTED_KEYS=""
+CONFIG_SYSTEM_REVOCATION_KEYS=""
