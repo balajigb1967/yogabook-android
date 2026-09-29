@@ -22,6 +22,7 @@ OUT_DIR="${OUT_DIR:-artifacts}"
 FRAGMENT="$(cd "$(dirname "$0")" && pwd)/kernel/yogabook-android.fragment"
 
 mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"   # absolute: we cd into linux/ below
 
 if [[ -n "${KERNEL_SRC:-}" ]]; then
     LINUX="$KERNEL_SRC"
