@@ -40,8 +40,8 @@ install -m 0644 "$BZIMAGE" "$WORK/iso/kernel"
 unpack_cpio() {
     local img="$1" dir="$2"
     mkdir -p "$dir"
-    ( cd "$dir" && zcat "$img" 2>/dev/null || lz4 -d "$img" 2>/dev/null || cat "$img" ) \
-        | cpio -idm --quiet
+    ( cd "$dir" && ( xzcat "$img" 2>/dev/null || zcat "$img" 2>/dev/null \
+        || lz4 -d "$img" 2>/dev/null || cat "$img" ) | cpio -idm --quiet )
 }
 
 repack_cpio() {
@@ -81,25 +81,30 @@ if [[ -f "$WORK/iso/ramdisk.img" ]]; then
     repack_cpio "$WORK/ramdisk" "$WORK/iso/ramdisk.img"
 fi
 
-# ---- rebuild the ISO preserving boot records ----
-VOLID="$(xorriso -indev "$BASE" -report_el_torito as_mkisofs 2>/dev/null | grep -oE '\-V [^ ]+' | head -1 || true)"
+# ---- rebuild the ISO preserving the original El Torito boot records ----
+# xorriso's as_mkisofs report gives the EXACT options the base ISO was built
+# with (-V, -b isolinux.bin, -e efiboot.img, ...), so we reuse them verbatim
+# instead of guessing paths.
+OPTS="$(xorriso -indev "$BASE" -report_el_torito as_mkisofs 2>/dev/null | tr '\n' ' ' | xargs || true)"
 
-echo ">>> Building $OUT"
+echo ">>> Rebuilding $OUT (boot opts: ${OPTS:-<fallback BIOS-only>})"
 rm -f "$OUT"
-xorriso -as mkisofs \
-    -o "$OUT" \
-    $VOLID \
-    -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
-    -c isolinux/boot.cat \
-    -b isolinux/isolinux.bin \
-    -no-emul-boot -boot-load-size 4 -boot-info-table \
-    -eltorito-alt-boot -e EFI/boot/efiboot.img -no-emul-boot \
-    -isohybrid-gpt-basdat \
-    -V "BlissOS-YogaBook" \
-    "$WORK/iso" 2>&1 | tail -3 || \
-xorriso -as mkisofs -o "$OUT" $VOLID -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
-    -c isolinux/boot.cat -b isolinux/isolinux.bin -no-emul-boot \
-    -boot-load-size 4 -boot-info-table -V "BlissOS-YogaBook" "$WORK/iso"
+
+# GPT hybrid is only valid when an EFI El Torito record exists
+GPT=""
+case " $OPTS " in
+    *" -e "*) GPT="-isohybrid-gpt-basdat" ;;
+esac
+
+if [[ -n "$OPTS" ]] && eval "xorriso -as mkisofs -o \"$OUT\" \
+        -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin $GPT $OPTS \"$WORK/iso\"" 2>&1 | tail -3; then
+    :
+else
+    echo ">>> as_mkisofs route failed, falling back to plain BIOS build"
+    xorriso -as mkisofs -o "$OUT" -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
+        -c isolinux/boot.cat -b isolinux/isolinux.bin -no-emul-boot \
+        -boot-load-size 4 -boot-info-table -V "BlissOS-YogaBook" "$WORK/iso"
+fi
 
 echo ">>> Result:"
 ls -lh "$OUT"
