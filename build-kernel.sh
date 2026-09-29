@@ -23,16 +23,6 @@ FRAGMENT="$(cd "$(dirname "$0")" && pwd)/kernel/yogabook-android.fragment"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"   # absolute: we cd into linux/ below
 
-# CI cache hygiene: a restored `linux/` may be partial (out-only) or stale (ref changed)
-if [[ -d "$LINUX" && ! -f "$LINUX/Makefile" ]]; then
-    echo ">>> Partial kernel tree from cache — resetting"
-    rm -rf "$LINUX"
-fi
-if [[ -d "$LINUX" && "$(cat "$LINUX/.yb-ref" 2>/dev/null)" != "$KERNEL_REF" ]]; then
-    echo ">>> Kernel ref changed — recloning"
-    rm -rf "$LINUX"
-fi
-
 # ccache: objects persist between CI runs (via the ~/.ccache cache), so an
 # unchanged kernel rebuilds in minutes instead of an hour
 export CCACHE_DIR="${CCACHE_DIR:-$HOME/.ccache}"
@@ -49,10 +39,21 @@ if [[ -n "${KERNEL_SRC:-}" ]]; then
     echo ">>> Using existing kernel tree: $LINUX"
 else
     LINUX="$WORKROOT/linux"
-    if [[ ! -d "$LINUX" ]]; then
-        echo ">>> Cloning $KERNEL_REPO (ref $KERNEL_REF) ..."
-        git clone --depth 1 --branch "$KERNEL_REF" "$KERNEL_REPO" "$LINUX"
-    fi
+fi
+
+# CI cache hygiene: a restored linux/ may be partial or from another ref
+if [[ -d "$LINUX" && ! -f "$LINUX/Makefile" ]]; then
+    echo ">>> Partial kernel tree from cache — resetting"
+    rm -rf "$LINUX"
+fi
+if [[ -d "$LINUX" && "$(cat "$LINUX/.yb-ref" 2>/dev/null)" != "$KERNEL_REF" ]]; then
+    echo ">>> Kernel ref changed — recloning"
+    rm -rf "$LINUX"
+fi
+
+if [[ ! -d "$LINUX" ]]; then
+    echo ">>> Cloning $KERNEL_REPO (ref $KERNEL_REF) ..."
+    git clone --depth 1 --branch "$KERNEL_REF" "$KERNEL_REPO" "$LINUX"
 fi
 
 echo ">>> Extracting tested config from Yoga-Book linux-image .deb"
