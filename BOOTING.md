@@ -27,8 +27,20 @@
 3. Save & exit (F10), power off.
 
 ## 2. Flash the USB stick
-- **Rufus:** select the ISO, partition scheme *GPT/UEFI*, write mode **DD image mode** (Rufus asks — choose DD, not ISO mode).
-- **Etcher:** select ISO → USB → Flash.
+**Rufus settings:**
+
+| Setting | Value |
+|---|---|
+| Boot selection | the YogaBook ISO |
+| Partition scheme | **GPT** *(ignored in DD mode — the ISO is hybrid and embeds its own MBR+GPT boot records)* |
+| Target system | UEFI (non CSM) *(ignored in DD mode)* |
+| File system / cluster | defaults *(ignored in DD mode)* |
+
+Press **START** → when Rufus asks *"ISOHybrid image detected"* → **choose DD Image mode**
+(not the "Recommended" ISO mode — Android-x86 isolinux images boot unreliably through it).
+After flashing Windows will ask to format the stick — **Cancel, never format**.
+
+- **Etcher (alternative):** select ISO → USB → Flash (always raw-write, no options needed).
 - Verify SHA256 against the build output if you like.
 
 ## 3. Boot from USB
