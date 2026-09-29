@@ -1,24 +1,23 @@
 #!/usr/bin/env bash
-# build-kernel.sh — Build a Lenovo Yoga Book (YB1-X91F) kernel from
-# jekhor/yogabook-linux-kernel and package it for injection into a
-# Bliss/Bass 16.9.7 (Android-x86) ISO.
+# build-kernel.sh — Build the Yoga Book kernel for Android (Bass/Bliss 16.9.7).
+#
+# Source:   Yoga-Book/Yoga-Book-Linux-Kernel (submission/yogabook-x91l-v2, 7.2.0)
+#           — the tree behind the Yoga-Book org's validated X91 hardware stack
+#           (touchscreen, sound, halo keyboard, pen, Wi-Fi; LTE on X91L).
+# Config:   the EXACT config from their published linux-image .deb (their
+#           hardware validation baseline), merged with kernel/yogabook-android.fragment
+#           (Android binder/binderfs, PSI, live-boot FSes, uinput).
 #
 # Outputs (in $OUT_DIR):
-#   bzImage-<krel>            bootable kernel (drop-in replacement for ISO /kernel)
-#   modules-<krel>.tar.gz     full module tree + depmod db (initrd/lib/modules)
-#   config-<krel>, System.map-<krel>, KREL
-#
-# Env:
-#   KERNEL_REF   git ref of jekhor/yogabook-linux-kernel   (default: master)
-#   KERNEL_SRC   existing kernel checkout to use instead of cloning
-#   JOBS         parallel build jobs                       (default: nproc)
-#   OUT_DIR      output directory                          (default: artifacts)
+#   bzImage-<krel>, modules-<krel>.tar.gz, config-<krel>, System.map-<krel>, KREL
 set -euo pipefail
 
-KERNEL_REPO="https://github.com/jekhor/yogabook-linux-kernel"
-KERNEL_REF="${KERNEL_REF:-master}"
+KERNEL_REPO="https://github.com/Yoga-Book/Yoga-Book-Linux-Kernel"
+KERNEL_REF="${KERNEL_REF:-submission/yogabook-x91l-v2}"
+KERNEL_IMG_DEB="${KERNEL_IMG_DEB:-https://github.com/Yoga-Book/Yoga-Book-Linux-Kernel/releases/download/v7.2.0-yogabook-20260901-232318/linux-image-7.2.0-yogabook-20260901-232318_7.2.0-14793-g42ad949c9ebb-5_amd64.deb}"
 JOBS="${JOBS:-$(nproc)}"
 OUT_DIR="${OUT_DIR:-artifacts}"
+WORKROOT="$PWD"
 FRAGMENT="$(cd "$(dirname "$0")" && pwd)/kernel/yogabook-android.fragment"
 
 mkdir -p "$OUT_DIR"
@@ -28,25 +27,34 @@ if [[ -n "${KERNEL_SRC:-}" ]]; then
     LINUX="$KERNEL_SRC"
     echo ">>> Using existing kernel tree: $LINUX"
 else
-    LINUX="$PWD/linux"
+    LINUX="$WORKROOT/linux"
     if [[ ! -d "$LINUX" ]]; then
-        echo ">>> Shallow-cloning $KERNEL_REPO (ref $KERNEL_REF) ..."
+        echo ">>> Cloning $KERNEL_REPO (ref $KERNEL_REF) ..."
         git clone --depth 1 --branch "$KERNEL_REF" "$KERNEL_REPO" "$LINUX"
     fi
 fi
-cd "$LINUX"
 
-echo ">>> Configuring: yogabook_defconfig + Android fragment"
+echo ">>> Extracting tested config from Yoga-Book linux-image .deb"
+CFG_DEB="$WORKROOT/kernel-image.deb"
+curl -fL --retry 3 -o "$CFG_DEB" "$KERNEL_IMG_DEB"
+mkdir -p "$WORKROOT/debx"
+dpkg-deb -x "$CFG_DEB" "$WORKROOT/debx"
+BASE_CFG="$(find "$WORKROOT/debx/boot" -name 'config-*' | head -n1)"
+[[ -n "$BASE_CFG" ]] || { echo "ERROR: no config-* inside the .deb" >&2; exit 1; }
+echo "    using $(basename "$BASE_CFG")"
+
+cd "$LINUX"
+echo ">>> Configuring: Yoga-Book validated config + Android fragment"
 mkdir -p out
-cp arch/x86/configs/yogabook_defconfig out/.config
+cp "$BASE_CFG" out/.config
 ./scripts/kconfig/merge_config.sh -m -O out out/.config "$FRAGMENT"
 make O=out olddefconfig
 
 echo ">>> Merged config sanity check"
 for sym in CONFIG_ANDROID_BINDERFS CONFIG_INPUT_UINPUT CONFIG_HIDRAW \
-           CONFIG_SND_SOC_RT5645 CONFIG_DRM_I915 CONFIG_TOUCHSCREEN_GOODIX; do
+           CONFIG_DRM_I915 CONFIG_PSI CONFIG_DRM_SIMPLEDRM; do
     grep -q "^$sym=y\|^$sym=m" out/.config && echo "    OK   $sym" \
-        || echo "    MISS $sym  (not present in this kernel tree — check fragment)"
+        || echo "    MISS $sym"
 done
 
 echo ">>> Building bzImage + modules (-j$JOBS)"

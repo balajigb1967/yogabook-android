@@ -1,8 +1,11 @@
 # Yoga Book (YB1-X91F) -> Bass/Bliss 16.9.7 (Android-x86, Android 13)
-# Merged on top of arch/x86/configs/yogabook_defconfig via merge_config.sh.
-# Every symbol is additive/overriding only — everything already correct in
-# yogabook_defconfig (Goodix halo controller, Wacom digitizer, RT5645 codec,
-# battery charger, KXCJ9 accelerometer, i915, brcmfmac) is left untouched.
+# Merged on top of the Yoga-Book org's VALIDATED X91 config (extracted from
+# their published linux-image .deb — the config behind their "touchscreen,
+# sound, halo keyboard, pen, Wi-Fi working on 7.2" validation).
+#
+# This fragment only ADDS Android-runtime and live-boot symbols; everything
+# hardware-specific (HiDeep touchscreen, Goodix halo, Wacom digitizer, RT5677
+# sound, brcmfmac, battery/charger, sensors, LTE) is inherited untouched.
 
 # ---- Android runtime requirements ----
 CONFIG_ANDROID=y
@@ -27,6 +30,7 @@ CONFIG_JOLIET=y
 CONFIG_ZISOFS=y
 CONFIG_BLK_DEV_LOOP=y
 CONFIG_EXT4_FS=y
+CONFIG_EXT2_FS=y
 CONFIG_VFAT_FS=y
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ASCII=y
@@ -45,11 +49,6 @@ CONFIG_FRAMEBUFFER_CONSOLE=y
 CONFIG_INPUT_UINPUT=y
 CONFIG_HIDRAW=y
 CONFIG_UHID=y
-CONFIG_TOUCHSCREEN_GOODIX=y
-
-# ---- Audio ----
-# jekhor's tree ships SND_SOC_INTEL_CHT_YOGABOOK_MACH (dedicated Yoga Book
-# RT5645/SST machine driver, already =m in yogabook_defconfig) — nothing to add.
 
 # ---- Versioning ----
 CONFIG_LOCALVERSION="-yogabook-bass"
