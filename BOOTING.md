@@ -89,7 +89,27 @@ Screen rotation may need the auto-rotate toggle in quick settings.
 5. Still nothing? Try a single OTG adapter instead of a hub, or another stick
    (the YB1 is picky about USB controllers).
 
-- **Black screen on boot:** at the GRUB menu press `e`, add `video=DSI-1:1200x1920@60` or `i915.modeset=0` (diagnostic only) to the `linux` line.
+- **"Kernel panic - not syncing: No working init found"** (purple screen):
+  the kernel started but the initrd failed to unpack (old builds used lz4;
+  fixed to gzip) — boot the newest ISO build. If it appears **without** the
+  USB stick inserted, the eMMC install never completed.
+
+### What a correct auto-install run looks like (new builds)
+1. GRUB: 3 s countdown on the default **AUTO-INSTALL** entry
+2. Kernel messages scroll (no quiet), then `[YB] auto-installer starting...`
+3. Guard output: DMI check + eMMC detection
+4. `!!!! AUTO-INSTALL: erasing ... POWER OFF NOW TO ABORT !!!!` (10 s window)
+5. Partition/format/copy steps print to screen
+6. `AUTO-INSTALL COMPLETE - powering off` → remove stick, power on
+
+If any step fails it prints the reason and falls through to **live boot from
+the stick** — Android still runs, eMMC untouched.
+
+### Did the old (buggy) build wipe my Windows? Quick check
+Power on **normally, no USB**: Lenovo logo → Windows boots = eMMC untouched.
+Boot straight to the purple panic or a GRUB shell = the eMMC was re-partitioned;
+Windows is gone but a fresh auto-install (new ISO) is unaffected — it wipes
+and reinstalls anyway.
 - **No boot menu at all:** USB wasn't flashed in DD mode, or Secure Boot is still on.
 - **Digitizer dead but screen works:** kernel booted with wrong DMI; check `adb shell dmesg | grep -i wacom` and report in the repo.
 - **Boot loop:** try the `Safe mode` GRUB entry, then `adb logcat` via USB debugging.
