@@ -75,9 +75,8 @@ cat > "$WORK/initrd/sbin/yogabook-autostall" <<'INSTALLER'
 # yogabook-autostall — one-touch Android-x86 installer for Lenovo Yoga Book.
 # Guards: correct DMI + exactly one non-removable eMMC; otherwise this
 # script exits 0 and the normal Android-x86 live boot continues untouched.
-LOG=/yogabook-autostall.log
-exec >>"$LOG" 2>&1
-set -x
+# All output goes to console so the user sees every step.
+exec >/dev/console 2>&1
 
 DMI="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
 case "$DMI" in
@@ -100,8 +99,8 @@ done
 [ "$COUNT" = "1" ] && [ -n "$EMMC" ] || { echo "eMMC not uniquely identified (count=$COUNT)"; exit 0; }
 P1="${EMMC}p1"; P2="${EMMC}p2"
 
-echo "!!!! AUTO-INSTALL: erasing $EMMC in 5 seconds — power off now to abort !!!!"
-sleep 5
+echo "!!!! AUTO-INSTALL: erasing $EMMC in 10 seconds — POWER OFF NOW TO ABORT !!!!"
+sleep 10
 
 $BB fdisk "$EMMC" <<FD
 o
@@ -185,18 +184,26 @@ fi
 if [ -f "$WORK/initrd/init.orig" ]; then
     cat > "$WORK/initrd/init" <<'SHIM'
 #!/bin/sh
+mount -t proc proc /proc 2>/dev/null
 if ! grep -q 'YB_INSTALL=0' /proc/cmdline 2>/dev/null; then
-    /sbin/yogabook-autostall || true
+    echo "[YB] auto-installer starting (pass YB_INSTALL=0 to skip)..."
+    /sbin/yogabook-autostall || { echo "[YB] installer failed - continuing to live boot"; }
 fi
-exec /init.orig
+umount /proc 2>/dev/null
+if [ -x /init.orig ]; then
+    exec /init.orig
+elif [ -x /sbin/init ]; then
+    exec /sbin/init
+fi
+exec sh
 SHIM
     chmod 0755 "$WORK/initrd/init"
 fi
 
 touch "$WORK/initrd/yogabook-autostall.enabled"
 
-echo ">>> Repacking initrd.img (lz4)"
-( cd "$WORK/initrd" && find . -print0 | cpio --null -o -H newc --quiet | lz4 -9 -l ) \
+echo ">>> Repacking initrd.img (gzip - universally supported by all kernels)"
+( cd "$WORK/initrd" && find . -print0 | cpio --null -o -H newc --quiet | gzip -9 ) \
     > "$WORK/iso/initrd.img"
 
 # ---- ramdisk.img: merge modules so the installed system has them too ----
@@ -220,17 +227,19 @@ set default=0
 set fallback=1
 menuentry "Yoga Book — AUTO-INSTALL Android (erases internal eMMC)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel quiet root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Yoga Book — Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel quiet root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_INSTALL=0
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_INSTALL=0
     initrd /initrd.img
 }
 GRUB
-    # keep the original entries available as fallback entries 2+
-    sed '/^menuentry/,$d' "${GRUBCFG}.orig" >/dev/null 2>&1 || true
+    # UEFI firmware boots \EFI\BOOT\grub.cfg — our custom menu must be there too
+    if [ -f "$WORK/iso/EFI/BOOT/grub.cfg" ]; then
+        cp "$GRUBCFG" "$WORK/iso/EFI/BOOT/grub.cfg"
+    fi
 fi
 
 # ---- rebuild the ISO preserving the original El Torito boot records ----

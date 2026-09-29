@@ -17,6 +17,12 @@ CONFIG_PSI=y
 CONFIG_MEMCG=y
 
 # ---- Android-x86 live-boot essentials (initrd) ----
+CONFIG_BLK_DEV_INITRD=y
+# initramfs decompression support — must cover however we repack the initrd
+CONFIG_RD_GZIP=y
+CONFIG_RD_XZ=y
+CONFIG_RD_LZ4=y
+CONFIG_RD_ZSTD=y
 CONFIG_DEVTMPFS=y
 CONFIG_DEVTMPFS_MOUNT=y
 CONFIG_TMPFS=y
