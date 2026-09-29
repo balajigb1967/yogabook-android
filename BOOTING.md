@@ -69,6 +69,18 @@ Screen rotation may need the auto-rotate toggle in quick settings.
 4. Reboot without the stick, hold Volume Up → pick the new *Bliss OS* entry.
 
 ## 6. Troubleshooting
+### USB stick not detected in the boot menu (most common YB1 issue)
+1. **BIOS → Configuration → USB → USB Host Mode = Enabled** — the YB1's
+   micro-USB port defaults to *device* mode; until you flip this, USB sticks
+   are invisible to the tablet. This is Yoga-Book-specific and the #1 cause.
+2. **BIOS → Security → Secure Boot = Disabled** (required for our unsigned GRUB).
+3. Plug the stick in **before** power-on, through a **powered OTG hub**
+   (the micro port is weak — unpowered adapters often fail to enumerate sticks).
+4. Still nothing? Try a single OTG adapter instead of a hub, or another stick
+   (the YB1 is picky about USB controllers).
+5. Sanity-check the stick on another PC's UEFI boot menu — if it doesn't boot
+   anywhere, re-flash (Rufus, **GPT + DD image mode**).
+
 - **Black screen on boot:** at the GRUB menu press `e`, add `video=DSI-1:1200x1920@60` or `i915.modeset=0` (diagnostic only) to the `linux` line.
 - **No boot menu at all:** USB wasn't flashed in DD mode, or Secure Boot is still on.
 - **Digitizer dead but screen works:** kernel booted with wrong DMI; check `adb shell dmesg | grep -i wacom` and report in the repo.
