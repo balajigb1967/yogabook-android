@@ -102,6 +102,10 @@ P1="${EMMC}p1"; P2="${EMMC}p2"
 echo "!!!! AUTO-INSTALL: erasing $EMMC in 10 seconds — POWER OFF NOW TO ABORT !!!!"
 sleep 10
 
+# obliterate ALL previous installation signatures (old GRUB, Windows Boot
+# Manager, stale GPT) so the firmware cannot pick up anything old
+$BB dd if=/dev/zero of="$EMMC" bs=1M count=2 2>/dev/null || true
+
 $BB fdisk "$EMMC" <<FD
 o
 n
