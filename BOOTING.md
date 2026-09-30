@@ -1,36 +1,37 @@
 # Flashing & First Boot — Yoga Book YB1-X91F
 
-## ⚡ One-touch install to SD card (NO keyboard needed, Windows kept)
-**You need: a microSD card, 8 GB+ (class 10/UHS recommended), inserted in the
-Yoga Book's SD slot. Everything on the SD card is erased.**
+## ⚠️⚡ One-touch install to eMMC (DEFAULT — ERASES WINDOWS)
+**Read this first: the default GRUB entry wipes the internal 64 GB eMMC —
+**Windows and all its data are erased** — and installs Android there. This is
+what you asked for (no keyboard, SD slot not enumerating). The tablet becomes
+**Android-only**.**
+
+**Why default eMMC:** your SD slot didn't enumerate (`no removable SD card
+found`), and GRUB cannot listen to the volume buttons (firmware-only GPIO) —
+so the keyboardless path is a **zero-input default**: pick USB in the
+Volume-Up firmware menu, and the eMMC install runs by itself.
 
 1. Flash the ISO to USB (step 2 below) and plug it into the Yoga Book.
-2. Insert the microSD card into the tablet.
-3. Power on holding **Volume Up** → pick USB.
-4. **Do nothing.** The default GRUB entry (3 s) starts the guarded
-   auto-installer, which now targets the **SD card**: it erases the SD,
-   installs Android + GRUB on it with a persistent ext4 data partition, and
-   **powers the tablet off by itself**. **Windows on eMMC is never touched.**
-5. Remove the USB stick, keep the SD card in, power on →
-   pick the **SD entry** in the Volume-Up boot menu → Android boots from SD.
-   The SD card carries its own GRUB: **Android** is the default (1 s), with an
-   opt-in *Install to eMMC (WIPES WINDOWS)* entry below it.
-   (If the firmware menu doesn't list SD, boot the USB stick's "Live boot"
-   entry once and we'll add an eMMC chainload entry.)
+2. Power on holding **Volume Up** → pick USB.
+3. **Do nothing.** Default entry (5 s): `INSTALL ANDROID TO eMMC (ERASES
+   WINDOWS!)`. It identifies the machine (refuses on non-Yoga-Books), then
+   shows a **10-second `POWER OFF NOW TO ABORT`** window — hold the power
+   button to force-off if you change your mind.
+4. Partition / format / copy run on screen, then the tablet **powers off
+   itself**. Remove the stick.
+5. Power on → Android boots from eMMC. (Windows is gone. To ever get it
+   back you must reinstall it from USB.)
 
-Multi-boot summary: **Volume-Up menu = OS picker** — SD entry → Android,
-eMMC/Windows entry → Windows. Switching needs no keyboard.
-
-### Other GRUB entries on the stick
+### Other GRUB entries on the stick (arrow keys need a USB keyboard; without
+one, the default runs)
+- **AUTO-INSTALL to SD card (keeps Windows)** — the old safe path, kept for
+  when an SD card enumerates
 - **Live boot (no install)** — try Android without installing anything
-- **WIPE eMMC & install Android** — opt-in only; **erases Windows** and makes
-  the tablet Android-only (10 s abort window)
-- **Bliss original menu (debug)** — the stock BlissOS menu (iso-scan boot
-  paths); useful only if the Yoga Book entries ever misbehave
+- **Bliss original menu (debug)** — the stock BlissOS menu
 
 All installs are **full wipes of their target** (new partition table + old
-boot signatures zeroed) — no leftovers survive, and it only runs after the
-DMI/eMMC guards pass and the 10-second on-screen abort window expires.
+boot signatures zeroed). The eMMC wipe only runs after a positive Yoga Book
+DMI match and the 10-second on-screen abort window.
 
 ---
 
@@ -89,9 +90,10 @@ route, but the YB1's own boot menu skips DD sticks — ISO mode it is.)*
 Screen rotation may need the auto-rotate toggle in quick settings.
 
 ## 5. Install target options
-- **SD card (default):** Android + persistent data on the card; Windows
-  untouched. Re-run the installer any time to re-wipe/reinstall the SD.
-- **eMMC (opt-in via GRUB entry):** wipes Windows, Android-only tablet.
+- **eMMC (default):** Android-only tablet; Windows erased. Re-run the
+  installer any time to re-wipe/reinstall.
+- **SD card (GRUB entry):** Android + persistent data on the card; Windows
+  untouched — only works if the card enumerates (yours currently does not).
 - **Live boot:** nothing installed; user data resets each boot unless you
   add a persistence option later.
 

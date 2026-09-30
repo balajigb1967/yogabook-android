@@ -8,13 +8,13 @@
 #   busybox-yb            static busybox (fdisk/mkdosfs/mke2fs) used by installer
 #   firmware/*            extra firmware (e.g. sof-cht-rt5677.tplg)
 #
-# Install design (default):
-#   * Android is installed onto a REMOVABLE SD CARD (mmcblk, removable=1)
-#   * the internal eMMC (and any Windows install on it) is NEVER touched
-#   * SD layout: p1 FAT32 ESP (grub + kernel + initrd + system.sfs),
-#                p2 ext4 DATA (persistent user data)
-#   * multi-boot: Volume-Up firmware menu picks SD (Android) / eMMC (Windows)
-#   * an explicit GRUB entry opts into wiping the eMMC instead (YB_TARGET=emmc)
+# Install design (default, USER REQUEST: no keyboard, no working SD slot):
+#   * DEFAULT GRUB entry wipes the internal eMMC and installs Android there
+#     (erases Windows) — runs only on a positively-identified Yoga Book and
+#     only after a 10-second on-screen POWER OFF TO ABORT window
+#   * SD-card install and live boot remain as secondary GRUB entries
+#   * target layout: p1 FAT32 ESP (grub + kernel + initrd + system.sfs),
+#                    p2 ext4 DATA (persistent user data)
 set -euo pipefail
 
 BASE="${1:?usage: repack-iso.sh <base.iso> <bzImage> <modules.tar.gz> <out.iso> [assets-dir] [KREL-file]}"
@@ -109,36 +109,36 @@ BB=/sbin/yb-busybox
 
 CMD="$(cat /proc/cmdline 2>/dev/null)"
 case "$CMD" in
-    *YB_TARGET=emmc*) TARGET=emmc ;;
-    *)                TARGET=sd ;;
+    *YB_TARGET=sd*)   TARGET=sd ;;
+    *YB_INSTALL=0*)   exit 0 ;;
+    *)                TARGET=emmc ;;   # DEFAULT: erase eMMC, install Android
 esac
 umount /proc 2>/dev/null
 
-# Guard: positive Yoga Book ID required. The dmi-id product name lives in
-# /sys/class/dmi/id (dmi_sysfs.ko may not be loadable here), so fall back to
-# scanning the boot log. DESTRUCTIVE eMMC mode MUST match; the safe SD
-# default only warns so a missing sysfs view can't brick the flow.
+# ---- identify the machine BEFORE any destructive action ----
+# /sys/class/dmi/id (CONFIG_DMIID=y, built-in) is primary; if it is unreadable
+# fall back to the kernel's own boot-log line ("DMI: Lenovo YB1-X91F ...").
+# The destructive eMMC mode REQUIRES a positive match; without one nothing
+# destructive ever runs (other machines boot this stick safely).
 DMI="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
+if [ -z "$DMI" ]; then
+    DMI="$($BB dmesg 2>/dev/null | grep -aom1 'DMI:.*' | head -c 100)"
+fi
 case "$DMI" in
-    YB1-X91F|YB1-X91L|YB1-X90F|YB1-X90L) : ;;
+    *YB1-X91F*|*YB1-X91L*|*YB1-X90F*|*YB1-X90L*) : ;;
     *)
-        DMI="$($BB dmesg 2>/dev/null | grep -om1 'YB1-X9[01][FL]')"
-        case "$DMI" in
-            YB1-X91F|YB1-X91L|YB1-X90F|YB1-X90L) : ;;
-            *)
-                if [ "$TARGET" = "emmc" ]; then
-                    echo "[YB] not a Yoga Book (${DMI:-unknown}) - refusing destructive install"; exit 0
-                fi
-                echo "[YB] DMI inconclusive (${DMI:-unknown}) - continuing, SD card only"
-                ;;
-        esac
+        echo "[YB] dmi sysfs read gave: '$(cat /sys/class/dmi/id/product_name 2>&1)'"
+        echo "[YB] not a Yoga Book (${DMI:-no DMI data}) - auto-install disabled for safety"
+        exit 0
         ;;
 esac
+echo "[YB] Yoga Book identified: $DMI"
 
 # ---- pick the target device ----
 if [ "$TARGET" = "emmc" ]; then
     WANT_REMOVABLE=0
-    echo "[YB] MODE: wipe eMMC and install Android (WINDOWS WILL BE ERASED)"
+    echo "[YB] MODE: WIPE eMMC AND INSTALL ANDROID - WINDOWS WILL BE ERASED"
+    echo "[YB] (for SD install instead, use the second GRUB entry or YB_TARGET=sd)"
 else
     WANT_REMOVABLE=1
     echo "[YB] MODE: install to SD card (Windows on eMMC stays untouched)"
@@ -296,8 +296,10 @@ mount -t devtmpfs devtmpfs /dev 2>/dev/null
 # ("Detecting Android-x86..." forever). Load what we need, then settle.
 MP=/sbin/yb-busybox
 [ -x "$MP" ] || MP=/bin/busybox
+PATH=/sbin:/bin:/usr/sbin:/usr/bin; export PATH
 echo "[YB] loading storage/SD/HID modules..."
-for m in usb-storage uas mmc_block sdhci sdhci-pci sdhci-acpi usbhid hid-generic hid; do
+for m in usb-storage uas mmc_block sdhci sdhci-pci sdhci-acpi usbhid hid-generic hid \
+         rtsx_usb rtsx_usb_sdmmc rtsx_pci rtsx_pci_sdmmc; do
     $MP modprobe "$m" 2>/dev/null || true
 done
 sleep 3
@@ -356,9 +358,14 @@ fi
 # sources /efi/boot/android.cfg - THAT is where the effective menu lives
 # (boot/grub/grub.cfg merely sources it). Replace android.cfg itself, keep
 # the original reachable as a debug entry.
-MENU='set timeout=3
+MENU='set timeout=5
 set default=0
-menuentry "Yoga Book - AUTO-INSTALL Android to SD card (Windows untouched)" {
+menuentry "Yoga Book - INSTALL ANDROID TO eMMC (ERASES WINDOWS!) - default" {
+    search --no-floppy --file /kernel --set=root
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=emmc
+    initrd /initrd.img
+}
+menuentry "Yoga Book - AUTO-INSTALL to SD card (keeps Windows)" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive
     initrd /initrd.img
@@ -366,11 +373,6 @@ menuentry "Yoga Book - AUTO-INSTALL Android to SD card (Windows untouched)" {
 menuentry "Yoga Book - Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_INSTALL=0
-    initrd /initrd.img
-}
-menuentry "Yoga Book - WIPE eMMC & install Android (ERASES WINDOWS)" {
-    search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=emmc
     initrd /initrd.img
 }
 menuentry "Bliss original menu (debug)" {
