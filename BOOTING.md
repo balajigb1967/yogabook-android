@@ -103,10 +103,9 @@ Screen rotation may need the auto-rotate toggle in quick settings.
 
 1. **BIOS → Boot tab:** Boot Mode = **UEFI**, Boot Priority = **UEFI First**,
    and **USB Boot = Enabled** if present. (Security → Secure Boot = Disabled.)
-2. **Verify the DD write on Windows:** a correct DD flash makes the stick show
-   up *shrunken (~2.9 GB)* with odd/unformattable partitions — normal. If you
-   can browse the ISO files like a normal drive, it was written in ISO mode →
-   re-flash with Rufus in **DD Image mode**.
+2. **Verify the flash on Windows:** a Rufus **ISO-mode** stick shows the ISO
+   contents as files — that is exactly what we want (the YB1 firmware only
+   enumerates ISO-mode sticks; DD-mode sticks are invisible in its boot menu).
 3. **Skip the BIOS entirely (recommended, Windows still installed):**
    hold **Shift + Restart** in Windows → *Troubleshoot → Advanced options →
    **Use a device*** → pick the USB stick. Windows' own boot manager launches
@@ -129,8 +128,13 @@ Screen rotation may need the auto-rotate toggle in quick settings.
 ### What a correct auto-install run looks like (new builds)
 1. GRUB: 3 s countdown on the default **AUTO-INSTALL to SD** entry
 2. Kernel messages scroll (no quiet), then `[YB] auto-installer starting...`
-3. Guard output: DMI check (`YB1-X91F/L`, `YB1-X90F/L`) + target scan — a
-   non-Yoga-Book machine prints `[YB] not a Yoga Book` and live-boots instead
+   (the shim first loads USB-storage/SD/HID modules — silent, a few seconds)
+3. Guard output: either nothing (positive Yoga Book DMI match) or
+   `[YB] DMI inconclusive - continuing, SD card only` (safe: SD-only path
+   never aborts on a missing ID; the **eMMC wipe** entry still refuses
+   without a positive `YB1-X9xF`/`YB1-X9xL` match)
+4. `[YB] MODE: install to SD card...` + `[YB] target device: mmcblkX`
+   (or `[YB] no removable SD card found` → live boot, nothing harmed)
 4. `!!!! AUTO-INSTALL: erasing ... POWER OFF NOW TO ABORT !!!!` (10 s window)
 5. Partition/format/copy steps print to screen
 6. `AUTO-INSTALL COMPLETE - powering off` → remove stick, power on
