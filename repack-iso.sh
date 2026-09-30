@@ -60,6 +60,22 @@ if [[ -n "$ASSETS" && -f "$ASSETS/busybox-yb" ]]; then
     echo ">>> Installing static busybox for the installer"
     install -m 0755 "$ASSETS/busybox-yb" "$WORK/initrd/sbin/yb-busybox"
 fi
+
+# CRITICAL: the stock Android-x86 initrd ships /bin/busybox but NO /bin/sh
+# (its /init uses '#!/bin/busybox sh'). Our injected scripts use '#!/bin/sh',
+# and if /bin/sh is missing the kernel exec fails ->
+# "No working init found" -> instant kernel panic. Guarantee it exists.
+echo ">>> Ensuring /bin/sh, /dev, /mnt exist in initrd"
+mkdir -p "$WORK/initrd/bin" "$WORK/initrd/dev" "$WORK/initrd/mnt"
+if [ ! -e "$WORK/initrd/bin/sh" ]; then
+    if [ -e "$WORK/initrd/bin/busybox" ]; then
+        ln -s busybox "$WORK/initrd/bin/sh"
+    elif [ -e "$WORK/initrd/sbin/yb-busybox" ]; then
+        ln -s /sbin/yb-busybox "$WORK/initrd/bin/sh"
+    else
+        echo "FATAL: no busybox to back /bin/sh" >&2; exit 1
+    fi
+fi
 if [[ -n "$ASSETS" && -d "$ASSETS/firmware" ]]; then
     echo ">>> Merging extra firmware (SOF topology etc.)"
     for p in lib/firmware vendor/firmware; do
@@ -81,6 +97,8 @@ BB=/sbin/yb-busybox
 [ -x "$BB" ] || { echo "[YB] no installer toolbox"; exit 0; }
 
 mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sysfs /sys 2>/dev/null
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
 CMD="$(cat /proc/cmdline 2>/dev/null)"
 umount /proc 2>/dev/null
 
@@ -188,15 +206,20 @@ for f in /mnt/src/ramdisk.img /mnt/src/system.sfs /mnt/src/system.img; do
     [ -f "$f" ] && cp "$f" /mnt/efi/
 done
 
-if [ -d /mnt/src/EFI/BOOT ]; then
-    mkdir -p /mnt/efi/EFI
-    cp -r /mnt/src/EFI/BOOT /mnt/efi/EFI/
+# source dir is 'efi/boot' (lowercase) on the ISO — match any case
+ESPBOOT=""
+for cand in /mnt/src/EFI/BOOT /mnt/src/efi/boot /mnt/src/efi/BOOT /mnt/src/EFI/boot; do
+    [ -d "$cand" ] && ESPBOOT="$cand" && break
+done
+if [ -n "$ESPBOOT" ]; then
+    mkdir -p /mnt/efi/EFI/BOOT
+    cp -r "$ESPBOOT/." /mnt/efi/EFI/BOOT/
 fi
 
 cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
 set timeout=1
 set default=0
-menuentry "Android (Bass OS 16.9.7) — installed on SD" {
+menuentry "Android (Bass OS 16.9.7) - installed on SD" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive DATA=$P2
     initrd /initrd.img
@@ -207,6 +230,12 @@ menuentry "Install Android to eMMC (WIPES WINDOWS)" {
     initrd /initrd.img
 }
 GRUB
+# the firmware-loaded GRUB sources android.cfg next to BOOTX64.EFI - our
+# menu must live THERE or the stock Bliss menu takes over (or nothing boots)
+if [ -f /mnt/efi/EFI/BOOT/android.cfg ]; then
+    mv /mnt/efi/EFI/BOOT/android.cfg /mnt/efi/EFI/BOOT/android.cfg.bliss
+fi
+cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/android.cfg
 # some firmwares read /EFI/BOOT/grub/grub.cfg instead
 mkdir -p /mnt/efi/EFI/BOOT/grub 2>/dev/null || true
 cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/grub/grub.cfg 2>/dev/null || true
@@ -226,14 +255,19 @@ INSTALLER
 chmod 0755 "$WORK/initrd/sbin/yogabook-autostall"
 
 # shim /init: run the installer (guarded), then continue normal boot
+# DATA= in cmdline means we are booting an ALREADY INSTALLED system — never
+# re-run the installer then (the installed SD card would otherwise look like
+# a valid install target).
 if [ -f "$WORK/initrd/init" ] && [ ! -f "$WORK/initrd/init.orig" ]; then
     mv "$WORK/initrd/init" "$WORK/initrd/init.orig"
 fi
 if [ -f "$WORK/initrd/init.orig" ]; then
     cat > "$WORK/initrd/init" <<'SHIM'
-#!/bin/sh
+#!/bin/busybox sh
 mount -t proc proc /proc 2>/dev/null
-if ! grep -q 'YB_INSTALL=0' /proc/cmdline 2>/dev/null; then
+mount -t sysfs sysfs /sys 2>/dev/null
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+if ! grep -qE 'YB_INSTALL=0|DATA=' /proc/cmdline 2>/dev/null; then
     echo "[YB] auto-installer starting (pass YB_INSTALL=0 to skip)..."
     /sbin/yogabook-autostall || { echo "[YB] installer did not run - continuing to live boot"; }
 fi
@@ -250,9 +284,29 @@ fi
 
 touch "$WORK/initrd/yogabook-autostall.enabled"
 
+# ---- integrity assertions: fail the build BEFORE shipping a dead initrd ----
+echo ">>> Initrd integrity checks"
+[ -f "$WORK/initrd/init" ]                   || { echo "FATAL: /init missing after repack prep" >&2; exit 1; }
+[ -f "$WORK/initrd/init.orig" ]              || { echo "FATAL: /init.orig missing (original Android init)" >&2; exit 1; }
+[ -x "$WORK/initrd/sbin/yogabook-autostall" ] || { echo "FATAL: installer script missing" >&2; exit 1; }
+[ -e "$WORK/initrd/bin/sh" ]                 || { echo "FATAL: /bin/sh missing - /init shebang would fail" >&2; exit 1; }
+[ -d "$WORK/initrd/lib/modules/$KREL" ]      || { echo "FATAL: /lib/modules/$KREL missing" >&2; exit 1; }
+[ -d "$WORK/initrd/proc" ]                   || echo "WARN: /proc mountpoint missing in initrd"
+[ -d "$WORK/initrd/sys" ]                    || echo "WARN: /sys mountpoint missing in initrd"
+echo "    tree: $(find "$WORK/initrd" | wc -l) entries, $(du -sh "$WORK/initrd" | cut -f1)"
+
 echo ">>> Repacking initrd.img (gzip - universally supported by all kernels)"
 ( cd "$WORK/initrd" && find . -print0 | cpio --null -o -H newc --quiet | gzip -9 ) \
     > "$WORK/iso/initrd.img"
+
+# verify the artifact we are about to ship
+INITRD_SIZE=$(stat -c%s "$WORK/iso/initrd.img")
+[[ "$(head -c2 "$WORK/iso/initrd.img" | od -An -tx1 | tr -d ' \n')" == "1f8b" ]] \
+    || { echo "FATAL: repacked initrd.img is not gzip (kernel could never load it)" >&2; exit 1; }
+gzip -t "$WORK/iso/initrd.img" || { echo "FATAL: repacked initrd.img fails gzip integrity" >&2; exit 1; }
+zcat < "$WORK/iso/initrd.img" | cpio -it --quiet | grep -qxE '^\.?/?init$' \
+    || { echo "FATAL: /init not found inside repacked initrd" >&2; exit 1; }
+echo "    initrd.img: $INITRD_SIZE bytes, gzip OK, /init present"
 
 # ---- ramdisk.img: merge modules so the installed system has them too ----
 if [[ -f "$WORK/iso/ramdisk.img" ]]; then
@@ -263,56 +317,75 @@ if [[ -f "$WORK/iso/ramdisk.img" ]]; then
         > "$WORK/iso/ramdisk.img"
 fi
 
-# ---- ISO GRUB: SD install is the DEFAULT entry, 3s timeout ----
-GRUBCFG="$WORK/iso/boot/grub/grub.cfg"
-[[ -f "$GRUBCFG" ]] || GRUBCFG="$(find "$WORK/iso" -name grub.cfg | head -n1)"
-if [[ -f "$GRUBCFG" ]]; then
-    echo ">>> Writing custom grub.cfg at $GRUBCFG"
-    cp "$GRUBCFG" "${GRUBCFG}.orig"
-    cat > "$GRUBCFG" <<'GRUB'
-set timeout=3
+# ---- ISO boot menu: SD install is the DEFAULT entry, 3s timeout ----
+# The firmware-loaded GRUB (efi/boot/BOOTx64.EFI, 32- and 64-bit variants)
+# sources /efi/boot/android.cfg - THAT is where the effective menu lives
+# (boot/grub/grub.cfg merely sources it). Replace android.cfg itself, keep
+# the original reachable as a debug entry.
+MENU='set timeout=3
 set default=0
-set fallback=1
-menuentry "Yoga Book — AUTO-INSTALL to SD card (Windows untouched)" {
+menuentry "Yoga Book - AUTO-INSTALL Android to SD card (Windows untouched)" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive
     initrd /initrd.img
 }
-menuentry "Yoga Book — Live boot (no install)" {
+menuentry "Yoga Book - Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_INSTALL=0
     initrd /initrd.img
 }
-menuentry "Yoga Book — WIPE eMMC & install Android (erases Windows)" {
+menuentry "Yoga Book - WIPE eMMC & install Android (ERASES WINDOWS)" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=emmc
     initrd /initrd.img
 }
-GRUB
-    # UEFI firmware boots \EFI\BOOT\grub.cfg — our custom menu must be there too
-    if [ -f "$WORK/iso/EFI/BOOT/grub.cfg" ]; then
-        cp "$GRUBCFG" "$WORK/iso/EFI/BOOT/grub.cfg"
-    fi
+menuentry "Bliss original menu (debug)" {
+    if [ -z "$kdir" ]; then set kdir=/android; fi
+    search --no-floppy --file /efi/boot/android.cfg.orig --set=root
+    source /efi/boot/android.cfg.orig
+}
+'
+ACFG="$WORK/iso/efi/boot/android.cfg"
+[[ -f "$ACFG" ]] || ACFG="$(find "$WORK/iso" -iname android.cfg | head -n1)"
+if [[ -f "$ACFG" ]]; then
+    echo ">>> Writing auto-install boot menu to $ACFG"
+    cp "$ACFG" "$ACFG.orig"
+    printf '%s\n' "$MENU" > "$ACFG"
+else
+    echo "WARN: no android.cfg found - UEFI menu not customized" >&2
+fi
+BCFG="$WORK/iso/boot/grub/grub.cfg"
+if [[ -f "$BCFG" ]]; then
+    echo ">>> Writing same menu to $BCFG"
+    printf '%s\n' "$MENU" > "$BCFG"
 fi
 
 # ---- rebuild the ISO preserving the original El Torito boot records ----
-OPTS="$(xorriso -indev "$BASE" -report_el_torito as_mkisofs 2>/dev/null | tr '\n' ' ' | xargs || true)"
+# NOTE: do NOT pass as_mkisofs output through xargs - it strips the quotes
+# around e.g. -V 'Name (x86_64)' and the unquoted parens explode eval.
+# Each output line is already shell-quoted; join lines and eval directly.
+# Also re-point the -isohybrid-mbr interval at OUR output (the base recipe
+# copies bytes from the base file): the layout is byte-identical, so use the
+# standard isohdpfx.bin instead. The rest of the recipe (incl. the GPT
+# basic-data partition covering the whole ISO) is kept verbatim - it is the
+# exact hybrid layout Bliss ships and the only one xorriso builds cleanly.
+OPTS="$(xorriso -indev "$BASE" -report_el_torito as_mkisofs 2>/dev/null \
+    | sed 's#-isohybrid-mbr --interval:[^ ]* #-isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin #' \
+    | tr '\n' ' ' || true)"
 echo ">>> Rebuilding $OUT (boot opts: ${OPTS:-<fallback BIOS-only>})"
 rm -f "$OUT"
 
-GPT=""
-case " $OPTS " in
-    # -efi-boot-part --efi-boot-image: embed the El Torito UEFI image as a real
-    # GPT EFI System Partition — strict firmwares (YB1 Insyde) only enumerate
-    # USB sticks whose GPT has an ESP-typed partition.
-    *" -e "*) GPT="-isohybrid-gpt-basdat -efi-boot-part --efi-boot-image" ;;
-esac
-
-if [[ -n "$OPTS" ]] && eval "xorriso -as mkisofs -o \"$OUT\" \
-        -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin $GPT $OPTS \"$WORK/iso\"" 2>&1 | tail -3; then
-    :
-else
-    echo ">>> as_mkisofs route failed, falling back to plain BIOS build"
+BUILD_OK=0
+if [[ -n "$OPTS" ]] && grep -q "isohdpfx" <<<"$OPTS"; then
+    if eval "xorriso -as mkisofs -o \"$OUT\" $OPTS \"$WORK/iso\"" >"$WORK/xorriso.log" 2>&1; then
+        BUILD_OK=1
+    else
+        echo ">>> as_mkisofs route failed:"
+        tail -5 "$WORK/xorriso.log"
+    fi
+fi
+if [[ "$BUILD_OK" != 1 ]]; then
+    echo ">>> Falling back to plain BIOS build"
     xorriso -as mkisofs -o "$OUT" -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
         -c isolinux/boot.cat -b isolinux/isolinux.bin -no-emul-boot \
         -boot-load-size 4 -boot-info-table -V "BlissOS-YogaBook" "$WORK/iso"
