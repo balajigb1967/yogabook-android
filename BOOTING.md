@@ -13,6 +13,8 @@ Yoga Book's SD slot. Everything on the SD card is erased.**
    **powers the tablet off by itself**. **Windows on eMMC is never touched.**
 5. Remove the USB stick, keep the SD card in, power on →
    pick the **SD entry** in the Volume-Up boot menu → Android boots from SD.
+   The SD card carries its own GRUB: **Android** is the default (1 s), with an
+   opt-in *Install to eMMC (WIPES WINDOWS)* entry below it.
    (If the firmware menu doesn't list SD, boot the USB stick's "Live boot"
    entry once and we'll add an eMMC chainload entry.)
 
@@ -22,7 +24,9 @@ eMMC/Windows entry → Windows. Switching needs no keyboard.
 ### Other GRUB entries on the stick
 - **Live boot (no install)** — try Android without installing anything
 - **WIPE eMMC & install Android** — opt-in only; **erases Windows** and makes
-  the tablet Android-only (runs the old eMMC flow, 10 s abort window)
+  the tablet Android-only (10 s abort window)
+- **Bliss original menu (debug)** — the stock BlissOS menu (iso-scan boot
+  paths); useful only if the Yoga Book entries ever misbehave
 
 All installs are **full wipes of their target** (new partition table + old
 boot signatures zeroed) — no leftovers survive, and it only runs after the
@@ -66,7 +70,9 @@ route, but the YB1's own boot menu skips DD sticks — ISO mode it is.)*
 ## 3. Boot from USB
 1. Connect the OTG hub → USB stick (+ USB keyboard).
 2. Power on holding **Volume Up** → pick the USB drive in the boot menu.
-3. The **GRUB menu** appears. Start with the plain `Boot Bliss OS` entry (live, no install).
+3. The **GRUB menu** appears — `Yoga Book — AUTO-INSTALL to SD card` is the
+   default (3 s countdown). Pick **Live boot (no install)** to just try it,
+   or **Bliss original menu (debug)** for the stock BlissOS menu.
 
 ## 4. First boot — what to expect
 | Component | Status |
@@ -111,14 +117,20 @@ Screen rotation may need the auto-rotate toggle in quick settings.
    (the YB1 is picky about USB controllers).
 
 - **"Kernel panic - not syncing: No working init found"** (purple screen):
-  the kernel started but the initrd failed to unpack (old builds used lz4;
-  fixed to gzip) — boot the newest ISO build. If it appears **without** the
+  the initrd could not run its `/init`. Older builds had two causes, both
+  fixed: an lz4-packed initrd (kernels lacking RD_LZ4), and — the real
+  killer — the repacked initrd carried **no `/bin/sh`** for the injected
+  installer shim (stock Bliss initrds ship only `/bin/busybox`). Builds
+  after 2026-09-30 integrity-gate the initrd at build time (gzip test,
+  `/init`, `/bin/sh`, modules present) and are QEMU-validated to reach the
+  Bliss banner. **Reflash the newest ISO.** If it appears **without** the
   USB stick inserted, the eMMC install never completed.
 
 ### What a correct auto-install run looks like (new builds)
-1. GRUB: 3 s countdown on the default **AUTO-INSTALL** entry
+1. GRUB: 3 s countdown on the default **AUTO-INSTALL to SD** entry
 2. Kernel messages scroll (no quiet), then `[YB] auto-installer starting...`
-3. Guard output: DMI check + eMMC detection
+3. Guard output: DMI check (`YB1-X91F/L`, `YB1-X90F/L`) + target scan — a
+   non-Yoga-Book machine prints `[YB] not a Yoga Book` and live-boots instead
 4. `!!!! AUTO-INSTALL: erasing ... POWER OFF NOW TO ABORT !!!!` (10 s window)
 5. Partition/format/copy steps print to screen
 6. `AUTO-INSTALL COMPLETE - powering off` → remove stick, power on

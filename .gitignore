@@ -1,6 +1,21 @@
-linux/
-artifacts/
+# local build/analysis debris (not part of the repo)
 base.iso
-*.iso
-modout/
-joblog*.txt
+initrd.img
+kernel-image.deb
+kbuild.log
+q*.log
+q*.err
+qemu-*.log
+assets/
+ac/
+ck/
+rp/
+debwork/
+debx/
+debwork-ex/
+initrd-stock/
+isoext/
+.ccache/
+test-*
+artifacts/
+linux/
