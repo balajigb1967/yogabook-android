@@ -56,6 +56,17 @@ for d in "$WORK"/initrd/lib/modules/*; do
     [[ "$(basename "$d")" == "$KREL" ]] || { echo "    removing stale modules: $(basename "$d")"; rm -rf "$d"; }
 done
 
+# Older kernels ship modules as .ko.zst (CONFIG_MODULE_COMPRESS_ZSTD) which
+# busybox modprobe cannot load - decompress everything to plain .ko.
+if find "$WORK/initrd/lib/modules" -name '*.ko.zst' | grep -q .; then
+    echo ">>> Decompressing .ko.zst modules (busybox modprobe can't read zstd)"
+    command -v zstd >/dev/null || { echo "FATAL: zstd required" >&2; exit 1; }
+    find "$WORK/initrd/lib/modules" -name '*.ko.zst' -print0 |
+        while IFS= read -r -d '' f; do zstd -q -d -f "$f" -o "${f%.ko.zst}.ko" && rm -f "$f"; done
+    # depmod metadata still references .ko.zst paths - regenerate it
+    depmod -b "$WORK/initrd" "$KREL"
+fi
+
 if [[ -n "$ASSETS" && -f "$ASSETS/busybox-yb" ]]; then
     echo ">>> Installing static busybox for the installer"
     install -m 0755 "$ASSETS/busybox-yb" "$WORK/initrd/sbin/yb-busybox"
@@ -285,6 +296,7 @@ mount -t devtmpfs devtmpfs /dev 2>/dev/null
 # ("Detecting Android-x86..." forever). Load what we need, then settle.
 MP=/sbin/yb-busybox
 [ -x "$MP" ] || MP=/bin/busybox
+echo "[YB] loading storage/SD/HID modules..."
 for m in usb-storage uas mmc_block sdhci sdhci-pci sdhci-acpi usbhid hid-generic hid; do
     $MP modprobe "$m" 2>/dev/null || true
 done

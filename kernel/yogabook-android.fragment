@@ -66,6 +66,12 @@ CONFIG_LOCALVERSION_AUTO=n
 CONFIG_SYSTEM_TRUSTED_KEYS=""
 CONFIG_SYSTEM_REVOCATION_KEYS=""
 
+# Modules must ship UNCOMPRESSED: busybox modprobe in the installer initrd
+# cannot load .ko.zst, and every USB-storage/SD/HID module load would
+# silently fail ("Detecting Android-x86..." forever). (Their own deb ships
+# plain .ko despite this same CONFIG_MODULE_COMPRESS_ZSTD=y in the config.)
+CONFIG_MODULE_COMPRESS=n
+
 # ---- No DWARF/BTF needed for Android ----
 # Their deb config carries Ubuntu's DEBUG_INFO_BTF=y; the resolve_btfids
 # host tool is fragile on CI and BTF is not used by Android-x86 at all.
