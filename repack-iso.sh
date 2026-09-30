@@ -69,7 +69,10 @@ fi
 
 if [[ -n "$ASSETS" && -f "$ASSETS/busybox-yb" ]]; then
     echo ">>> Installing static busybox for the installer"
-    install -m 0755 "$ASSETS/busybox-yb" "$WORK/initrd/sbin/yb-busybox"
+    # NAME MATTERS: busybox dispatches applets by argv[0] basename and only
+    # accepts names starting with "busybox" (verified: 'yb-busybox' fails
+    # EVERY call with 'applet not found', 'busybox-yb' works - 402 applets)
+    install -m 0755 "$ASSETS/busybox-yb" "$WORK/initrd/sbin/busybox-yb"
 fi
 
 # CRITICAL: the stock Android-x86 initrd ships /bin/busybox but NO /bin/sh
@@ -79,10 +82,14 @@ fi
 echo ">>> Ensuring /bin/sh, /dev, /mnt exist in initrd"
 mkdir -p "$WORK/initrd/bin" "$WORK/initrd/dev" "$WORK/initrd/mnt"
 if [ ! -e "$WORK/initrd/bin/sh" ]; then
-    if [ -e "$WORK/initrd/bin/busybox" ]; then
+    if [ -e "$WORK/initrd/sbin/busybox-yb" ]; then
+        # RELATIVE target: resolves to /sbin/busybox-yb once the initrd is
+        # mounted as /, AND lets the build-time [ -e ] integrity gate below
+        # verify it (an absolute /sbin/... link dangles inside the build tree).
+        # argv[0] stays '/bin/sh' -> basename 'sh' is a valid applet -> OK.
+        ln -s ../sbin/busybox-yb "$WORK/initrd/bin/sh"
+    elif [ -e "$WORK/initrd/bin/busybox" ]; then
         ln -s busybox "$WORK/initrd/bin/sh"
-    elif [ -e "$WORK/initrd/sbin/yb-busybox" ]; then
-        ln -s /sbin/yb-busybox "$WORK/initrd/bin/sh"
     else
         echo "FATAL: no busybox to back /bin/sh" >&2; exit 1
     fi
@@ -104,31 +111,39 @@ cat > "$WORK/initrd/sbin/yogabook-autostall" <<'INSTALLER'
 # cmdline YB_TARGET=emmc switches to the destructive eMMC wipe install.
 # All output goes to console so the user sees every step.
 exec >/dev/console 2>&1
-BB=/sbin/yb-busybox
+BB=/sbin/busybox-yb
+[ -x "$BB" ] || BB=/bin/busybox
 [ -x "$BB" ] || { echo "[YB] no installer toolbox"; exit 0; }
 
-CMD="$(cat /proc/cmdline 2>/dev/null)"
+# EVERY external command goes through the static toolbox $BB: the Android-x86
+# initramfs ships NO standalone binaries (no /bin/mount, /bin/cp, /bin/cat...)
+# and bare-name resolution depends on busybox applet fallback we cannot rely on.
+CMD="$($BB cat /proc/cmdline 2>/dev/null)"
 case "$CMD" in
     *YB_TARGET=sd*)   TARGET=sd ;;
     *YB_INSTALL=0*)   exit 0 ;;
     *)                TARGET=emmc ;;   # DEFAULT: erase eMMC, install Android
 esac
-umount /proc 2>/dev/null
+$BB umount /proc 2>/dev/null
 
 # ---- identify the machine BEFORE any destructive action ----
 # /sys/class/dmi/id (CONFIG_DMIID=y, built-in) is primary; if it is unreadable
 # fall back to the kernel's own boot-log line ("DMI: Lenovo YB1-X91F ...").
 # The destructive eMMC mode REQUIRES a positive match; without one nothing
 # destructive ever runs (other machines boot this stick safely).
-DMI="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
+DMI="$($BB cat /sys/class/dmi/id/product_name 2>/dev/null)"
+[ -n "$DMI" ] || DMI="$($BB cat /sys/class/dmi/id/board_name 2>/dev/null)"
 if [ -z "$DMI" ]; then
-    DMI="$($BB dmesg 2>/dev/null | grep -aom1 'DMI:.*' | head -c 100)"
+    DMI="$($BB dmesg 2>/dev/null | $BB grep -aom1 'DMI:.*' | $BB head -c 100)"
 fi
 case "$DMI" in
     *YB1-X91F*|*YB1-X91L*|*YB1-X90F*|*YB1-X90L*) : ;;
     *)
-        echo "[YB] dmi sysfs read gave: '$(cat /sys/class/dmi/id/product_name 2>&1)'"
         echo "[YB] not a Yoga Book (${DMI:-no DMI data}) - auto-install disabled for safety"
+        echo "[YB]   product_name='$($BB cat /sys/class/dmi/id/product_name 2>&1)'"
+        echo "[YB]   sys_vendor   ='$($BB cat /sys/class/dmi/id/sys_vendor 2>&1)'"
+        echo "[YB]   board_name   ='$($BB cat /sys/class/dmi/id/board_name 2>&1)'"
+        echo "[YB]   dmesg DMI: $($BB dmesg 2>/dev/null | $BB grep -aom1 'DMI:' || echo none)"
         exit 0
         ;;
 esac
@@ -144,34 +159,14 @@ else
     echo "[YB] MODE: install to SD card (Windows on eMMC stays untouched)"
 fi
 
-TGT=""
-COUNT=0
-sleep 2   # let freshly probed mmc hosts settle
-for d in /sys/block/mmcblk*; do
-    [ -e "$d" ] || continue
-    [ "$($BB cat "$d/removable" 2>/dev/null)" = "$WANT_REMOVABLE" ] || continue
-    TGT="/dev/$(basename "$d")"
-    COUNT=$((COUNT+1))
-done
-if [ "$TARGET" = "emmc" ]; then
-    [ "$COUNT" = "1" ] && [ -n "$TGT" ] || { echo "[YB] eMMC not uniquely identified (count=$COUNT)"; exit 0; }
-else
-    [ "$COUNT" = "1" ] && [ -n "$TGT" ] || {
-        echo "[YB] no removable SD card found (count=$COUNT) - insert one and reboot, or use the eMMC menu entry"
-        exit 0
-    }
-fi
-P1="${TGT}p1"; P2="${TGT}p2"
-echo "[YB] target device: $TGT"
-
-# ---- locate the boot media by CONTENT (skips the target) ----
-mkdir -p /mnt/src
+# ---- locate the BOOT MEDIA by content first (it is the USB stick) ----
+# The YB1's Realtek card reader (0bda:07ef) presents inserted microSD cards as
+# USB mass storage (/dev/sdX), so a card looks exactly like another stick:
+# only the CONTENT (kernel + system.sfs) identifies the boot medium.
+$BB mkdir -p /mnt/src
 SRCDEV=""
 for dev in /dev/sr0 /dev/sd[a-z] /dev/sd[a-z][0-9] /dev/mmcblk[0-9] /dev/mmcblk[0-9]p[0-9]; do
     [ -b "$dev" ] || continue
-    case "$dev" in
-        "$TGT"|"$P1"|"$P2") continue ;;
-    esac
     if $BB mount -o ro "$dev" /mnt/src 2>/dev/null; then
         if [ -f /mnt/src/kernel ] && { [ -f /mnt/src/system.sfs ] || [ -f /mnt/src/system.img ]; }; then
             SRCDEV="$dev"
@@ -181,11 +176,51 @@ for dev in /dev/sr0 /dev/sd[a-z] /dev/sd[a-z][0-9] /dev/mmcblk[0-9] /dev/mmcblk[
     fi
 done
 [ -n "$SRCDEV" ] || { echo "[YB] cannot find boot media"; exit 1; }
-echo "[YB] boot media: $SRCDEV"
+# whole-disk path of the boot medium (strip ONLY the partition suffix:
+# sdb1->sdb, mmcblk0p2->mmcblk0; sr0 and whole mmcblkN/sdX stay whole - a sed
+# 's/[0-9]*$//' would corrupt mmcblk0 into a nonexistent /dev/mmcblk and let
+# the boot medium be picked as its own install target)
+case "$SRCDEV" in
+    /dev/sr[0-9])       SRCDISK="$SRCDEV" ;;
+    /dev/mmcblk*p[0-9]) SRCDISK="${SRCDEV%p[0-9]}" ;;
+    /dev/mmcblk[0-9])   SRCDISK="$SRCDEV" ;;
+    /dev/sd[a-z][0-9])  SRCDISK="${SRCDEV%[0-9]}" ;;
+    *)                  SRCDISK="$SRCDEV" ;;
+esac
+echo "[YB] boot media: $SRCDEV (disk $SRCDISK)"
+
+# ---- pick the install target: ANY removable disk that is not the stick ----
+$BB sleep 2   # let freshly probed hosts settle
+TGT=""
+COUNT=0
+for d in /sys/block/*; do
+    b="${d##*/}"
+    case "$b" in
+        loop*|ram*|sr*|md*|zram*|dm-*|nbd*|*rpmb*|mmcblk*boot*) continue ;;
+    esac
+    [ "$($BB cat "$d/removable" 2>/dev/null)" = "$WANT_REMOVABLE" ] || continue
+    [ "/dev/$b" = "$SRCDISK" ] && continue
+    TGT="/dev/$b"
+    COUNT=$((COUNT+1))
+done
+if [ "$TARGET" = "emmc" ]; then
+    [ "$COUNT" = "1" ] && [ -n "$TGT" ] || { echo "[YB] eMMC not uniquely identified (count=$COUNT) - remove any inserted SD card / extra USB disks and reboot"; exit 0; }
+else
+    [ "$COUNT" = "1" ] && [ -n "$TGT" ] || {
+        echo "[YB] no removable SD card found (count=$COUNT, boot stick=$SRCDISK) - insert one and reboot"
+        exit 0
+    }
+fi
+# partition suffix: mmcblk0p1 vs sda1
+case "$TGT" in
+    *mmcblk*|*mmc*) P1="${TGT}p1"; P2="${TGT}p2" ;;
+    *)              P1="${TGT}1";  P2="${TGT}2"  ;;
+esac
+echo "[YB] target device: $TGT"
 
 # refuse to install onto the medium we are booting from
-case "$SRCDEV" in
-    "$TGT"|"$P1"|"$P2") echo "[YB] target == boot media - refusing"; exit 1 ;;
+case "$TGT" in
+    "$SRCDISK") echo "[YB] target == boot media - refusing"; exit 1 ;;
 esac
 
 if [ "$TARGET" != "emmc" ]; then
@@ -196,7 +231,7 @@ if [ "$TARGET" != "emmc" ]; then
 fi
 
 echo "!!!! AUTO-INSTALL: erasing $TGT in 10 seconds — POWER OFF NOW TO ABORT !!!!"
-sleep 10
+$BB sleep 10
 
 # obliterate ALL previous installation signatures (old GRUB, Windows Boot
 # Manager, stale GPT) so nothing old can be picked up by the firmware
@@ -218,15 +253,20 @@ p
 
 w
 FD
+$BB blockdev --rereadpt "$TGT" 2>/dev/null || true
+$BB sleep 1
 $BB mkdosfs -n ANDROID "$P1"
-$BB mke2fs -F -t ext4 -L DATA "$P2"
+# busybox mke2fs has NO -t option (it fails with usage text!) and writes an
+# ext2 filesystem - which the Yoga-Book kernel mounts fine through its ext4
+# driver (CONFIG_EXT4_USE_FOR_EXT2=y, no standalone EXT2_FS).
+$BB mke2fs -F -L DATA "$P2"
 
 # ---- stage files ----
-mkdir -p /mnt/efi
+$BB mkdir -p /mnt/efi
 $BB mount "$P1" /mnt/efi || { echo "[YB] ESP mount failed"; exit 1; }
-cp /mnt/src/kernel /mnt/src/initrd.img /mnt/efi/
+$BB cp /mnt/src/kernel /mnt/src/initrd.img /mnt/efi/
 for f in /mnt/src/ramdisk.img /mnt/src/system.sfs /mnt/src/system.img; do
-    [ -f "$f" ] && cp "$f" /mnt/efi/
+    [ -f "$f" ] && $BB cp "$f" /mnt/efi/
 done
 
 # source dir is 'efi/boot' (lowercase) on the ISO — match any case
@@ -235,44 +275,44 @@ for cand in /mnt/src/EFI/BOOT /mnt/src/efi/boot /mnt/src/efi/BOOT /mnt/src/EFI/b
     [ -d "$cand" ] && ESPBOOT="$cand" && break
 done
 if [ -n "$ESPBOOT" ]; then
-    mkdir -p /mnt/efi/EFI/BOOT
-    cp -r "$ESPBOOT/." /mnt/efi/EFI/BOOT/
+    $BB mkdir -p /mnt/efi/EFI/BOOT
+    $BB cp -r "$ESPBOOT/." /mnt/efi/EFI/BOOT/
 fi
 
-cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
+$BB cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
 set timeout=1
 set default=0
 menuentry "Android (Bass OS 16.9.7) - installed on eMMC" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive DATA=$P2
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/ DATA=$P2
     initrd /initrd.img
 }
 menuentry "Reinstall to SD card (keeps this eMMC install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=sd
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/ YB_TARGET=sd
     initrd /initrd.img
 }
 GRUB
 # the firmware-loaded GRUB sources android.cfg next to BOOTX64.EFI - our
 # menu must live THERE or the stock Bliss menu takes over (or nothing boots)
 if [ -f /mnt/efi/EFI/BOOT/android.cfg ]; then
-    mv /mnt/efi/EFI/BOOT/android.cfg /mnt/efi/EFI/BOOT/android.cfg.bliss
+    $BB mv /mnt/efi/EFI/BOOT/android.cfg /mnt/efi/EFI/BOOT/android.cfg.bliss
 fi
-cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/android.cfg
+$BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/android.cfg
 # some firmwares read /EFI/BOOT/grub/grub.cfg instead
-mkdir -p /mnt/efi/EFI/BOOT/grub 2>/dev/null || true
-cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/grub/grub.cfg 2>/dev/null || true
+$BB mkdir -p /mnt/efi/EFI/BOOT/grub 2>/dev/null || true
+$BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/grub/grub.cfg 2>/dev/null || true
 $BB umount /mnt/efi
 
-sync
+$BB sync
 if [ "$TARGET" = "emmc" ]; then
     echo "[YB] AUTO-INSTALL COMPLETE (eMMC wiped, Android installed) - powering off"
 else
     echo "[YB] AUTO-INSTALL COMPLETE (SD card ready) - remove USB stick; keep SD in"
     echo "[YB] Power on and pick the SD entry in the Volume-Up boot menu."
 fi
-sleep 2
-poweroff -f
+$BB sleep 2
+$BB poweroff -f
 exit 0
 INSTALLER
 chmod 0755 "$WORK/initrd/sbin/yogabook-autostall"
@@ -287,33 +327,38 @@ fi
 if [ -f "$WORK/initrd/init.orig" ]; then
     cat > "$WORK/initrd/init" <<'SHIM'
 #!/bin/busybox sh
-mount -t proc proc /proc 2>/dev/null
-mount -t sysfs sysfs /sys 2>/dev/null
-mount -t devtmpfs devtmpfs /dev 2>/dev/null
-# Our Yoga Book kernel builds USB storage, SD/eMMC hosts and HID as MODULES,
-# and nothing else in this initrd loads them: without this, the installer
-# sees no SD card and Android's init cannot find the boot stick
-# ("Detecting Android-x86..." forever). Load what we need, then settle.
-MP=/sbin/yb-busybox
-[ -x "$MP" ] || MP=/bin/busybox
+# Every external command goes through the static toolbox: the initramfs has
+# no standalone binaries, so bare names are a gamble.
+BB=/sbin/busybox-yb
+[ -x "$BB" ] || BB=/bin/busybox
 PATH=/sbin:/bin:/usr/sbin:/usr/bin; export PATH
+$BB mount -t proc proc /proc 2>/dev/null
+$BB mount -t sysfs sysfs /sys 2>/dev/null
+$BB mount -t devtmpfs devtmpfs /dev 2>/dev/null
+# Our Yoga Book kernel builds USB storage, SD/eMMC hosts and HID as MODULES,
+# and nothing else in this initrd loads them: without this, neither the
+# installer nor Android's init ever see any disk.
 echo "[YB] loading storage/SD/HID modules..."
+# also: sd/sr (disk driver may be =m), ATA/NVMe hosts (QEMU/other boxes), and
+# filesystems the installer itself needs to mount the ISO content with
 for m in usb-storage uas mmc_block sdhci sdhci-pci sdhci-acpi usbhid hid-generic hid \
-         rtsx_usb rtsx_usb_sdmmc rtsx_pci rtsx_pci_sdmmc; do
-    $MP modprobe "$m" 2>/dev/null || true
+         rtsx_usb rtsx_usb_sdmmc rtsx_pci rtsx_pci_sdmmc \
+         sd_mod sr_mod ata_piix ahci nvme virtio_blk virtio_pci \
+         isofs udf vfat nls_cp437 nls_ascii ext4; do
+    $BB modprobe "$m" 2>/dev/null || true
 done
-sleep 3
-if ! grep -qE 'YB_INSTALL=0|DATA=' /proc/cmdline 2>/dev/null; then
+$BB sleep 3
+if ! $BB grep -qE 'YB_INSTALL=0|DATA=' /proc/cmdline 2>/dev/null; then
     echo "[YB] auto-installer starting (pass YB_INSTALL=0 to skip)..."
     /sbin/yogabook-autostall || { echo "[YB] installer did not run - continuing to live boot"; }
 fi
-umount /proc 2>/dev/null
+$BB umount /proc 2>/dev/null
 if [ -x /init.orig ]; then
     exec /init.orig
 elif [ -x /sbin/init ]; then
     exec /sbin/init
 fi
-exec sh
+exec $BB sh
 SHIM
     chmod 0755 "$WORK/initrd/init"
 fi
@@ -367,7 +412,7 @@ menuentry "Yoga Book - INSTALL ANDROID TO eMMC (ERASES WINDOWS!) - default" {
 }
 menuentry "Yoga Book - AUTO-INSTALL to SD card (keeps Windows)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=sd
     initrd /initrd.img
 }
 menuentry "Yoga Book - Live boot (no install)" {
