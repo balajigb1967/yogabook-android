@@ -96,21 +96,32 @@ exec >/dev/console 2>&1
 BB=/sbin/yb-busybox
 [ -x "$BB" ] || { echo "[YB] no installer toolbox"; exit 0; }
 
-mount -t proc proc /proc 2>/dev/null
-mount -t sysfs sysfs /sys 2>/dev/null
-mount -t devtmpfs devtmpfs /dev 2>/dev/null
 CMD="$(cat /proc/cmdline 2>/dev/null)"
-umount /proc 2>/dev/null
-
-DMI="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
-case "$DMI" in
-    YB1-X91F|YB1-X91L|YB1-X90F|YB1-X90L) : ;;
-    *) echo "[YB] not a Yoga Book ($DMI) - skipping auto-install"; exit 0 ;;
-esac
-
 case "$CMD" in
     *YB_TARGET=emmc*) TARGET=emmc ;;
     *)                TARGET=sd ;;
+esac
+umount /proc 2>/dev/null
+
+# Guard: positive Yoga Book ID required. The dmi-id product name lives in
+# /sys/class/dmi/id (dmi_sysfs.ko may not be loadable here), so fall back to
+# scanning the boot log. DESTRUCTIVE eMMC mode MUST match; the safe SD
+# default only warns so a missing sysfs view can't brick the flow.
+DMI="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
+case "$DMI" in
+    YB1-X91F|YB1-X91L|YB1-X90F|YB1-X90L) : ;;
+    *)
+        DMI="$($BB dmesg 2>/dev/null | grep -om1 'YB1-X9[01][FL]')"
+        case "$DMI" in
+            YB1-X91F|YB1-X91L|YB1-X90F|YB1-X90L) : ;;
+            *)
+                if [ "$TARGET" = "emmc" ]; then
+                    echo "[YB] not a Yoga Book (${DMI:-unknown}) - refusing destructive install"; exit 0
+                fi
+                echo "[YB] DMI inconclusive (${DMI:-unknown}) - continuing, SD card only"
+                ;;
+        esac
+        ;;
 esac
 
 # ---- pick the target device ----
@@ -124,6 +135,7 @@ fi
 
 TGT=""
 COUNT=0
+sleep 2   # let freshly probed mmc hosts settle
 for d in /sys/block/mmcblk*; do
     [ -e "$d" ] || continue
     [ "$($BB cat "$d/removable" 2>/dev/null)" = "$WANT_REMOVABLE" ] || continue
@@ -267,6 +279,16 @@ if [ -f "$WORK/initrd/init.orig" ]; then
 mount -t proc proc /proc 2>/dev/null
 mount -t sysfs sysfs /sys 2>/dev/null
 mount -t devtmpfs devtmpfs /dev 2>/dev/null
+# Our Yoga Book kernel builds USB storage, SD/eMMC hosts and HID as MODULES,
+# and nothing else in this initrd loads them: without this, the installer
+# sees no SD card and Android's init cannot find the boot stick
+# ("Detecting Android-x86..." forever). Load what we need, then settle.
+MP=/sbin/yb-busybox
+[ -x "$MP" ] || MP=/bin/busybox
+for m in usb-storage uas mmc_block sdhci sdhci-pci sdhci-acpi usbhid hid-generic hid; do
+    $MP modprobe "$m" 2>/dev/null || true
+done
+sleep 3
 if ! grep -qE 'YB_INSTALL=0|DATA=' /proc/cmdline 2>/dev/null; then
     echo "[YB] auto-installer starting (pass YB_INSTALL=0 to skip)..."
     /sbin/yogabook-autostall || { echo "[YB] installer did not run - continuing to live boot"; }
