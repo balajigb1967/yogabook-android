@@ -242,14 +242,14 @@ fi
 cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
 set timeout=1
 set default=0
-menuentry "Android (Bass OS 16.9.7) - installed on SD" {
+menuentry "Android (Bass OS 16.9.7) - installed on eMMC" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive DATA=$P2
     initrd /initrd.img
 }
-menuentry "Install Android to eMMC (WIPES WINDOWS)" {
+menuentry "Reinstall to SD card (keeps this eMMC install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=emmc
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=sd
     initrd /initrd.img
 }
 GRUB
