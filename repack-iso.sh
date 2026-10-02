@@ -287,6 +287,11 @@ menuentry "Android (Bass OS 16.9.7) - installed on eMMC" {
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/ DATA=$P2
     initrd /initrd.img
 }
+menuentry "Android - installed on eMMC, SAFE GRAPHICS (try this if boot panics/hangs)" {
+    search --no-floppy --file /kernel --set=root
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/ DATA=$P2 nomodeset
+    initrd /initrd.img
+}
 menuentry "Reinstall to SD card (keeps this eMMC install)" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/ YB_TARGET=sd
@@ -418,6 +423,11 @@ menuentry "Yoga Book - AUTO-INSTALL to SD card (keeps Windows)" {
 menuentry "Yoga Book - Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
     linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_INSTALL=0
+    initrd /initrd.img
+}
+menuentry "Yoga Book - Live boot, SAFE GRAPHICS (try this if boot panics/hangs)" {
+    search --no-floppy --file /kernel --set=root
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_INSTALL=0 nomodeset
     initrd /initrd.img
 }
 menuentry "Bliss original menu (debug)" {
