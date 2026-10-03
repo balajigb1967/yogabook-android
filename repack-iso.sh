@@ -474,17 +474,22 @@ set timeout=5
 set default=0
 menuentry "Bass OS 16.9.7 (Android 13) - default" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 quiet HWC=drm_minigbm_celadon GRALLOC=minigbm androidboot.hardware=android_x86_64
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Bass OS 16.9.7 - Safe Graphics (nomodeset)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.selinux=permissive
+    initrd /initrd.img
+}
+menuentry "Bass OS 16.9.7 - hwcomposer.drm (Mesa GBM)" {
+    search --no-floppy --file /kernel --set=root
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 HWC=drm GRALLOC=gbm androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Bass OS 16.9.7 - Debug Mode (Console shell)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 DEBUG=2 androidboot.hardware=android_x86_64
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 DEBUG=2 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Reinstall to SD card (keeps this eMMC install)" {
@@ -677,17 +682,17 @@ menuentry "Yoga Book - AUTO-INSTALL to SD card (keeps Windows)" {
 }
 menuentry "Bass OS 16.9.7 - Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 quiet HWC=drm_minigbm_celadon GRALLOC=minigbm androidboot.hardware=android_x86_64
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Bass OS 16.9.7 - Live boot, SAFE GRAPHICS (try this if boot panics/hangs)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Bass OS 16.9.7 - Live boot, DEBUG (Console shell)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 DEBUG=2 androidboot.hardware=android_x86_64
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 DEBUG=2 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Bliss original menu (debug)" {
