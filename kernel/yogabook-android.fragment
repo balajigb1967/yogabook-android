@@ -16,6 +16,19 @@ CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder"
 CONFIG_PSI=y
 CONFIG_MEMCG=y
 
+# ---- Security / SELinux (Required by Android 13 userspace) ----
+# Base Ubuntu kernel defaults to AppArmor; Android init requires SELinux
+CONFIG_SECURITY=y
+CONFIG_SECURITY_NETWORK=y
+CONFIG_SECURITY_SELINUX=y
+CONFIG_SECURITY_SELINUX_BOOTPARAM=y
+CONFIG_SECURITY_SELINUX_DEVELOP=y
+CONFIG_SECURITY_SELINUX_AVC_STATS=y
+CONFIG_DEFAULT_SECURITY_SELINUX=y
+# CONFIG_DEFAULT_SECURITY_APPARMOR is not set
+CONFIG_LSM="landlock,lockdown,yama,integrity,selinux"
+
+
 # ---- Android-x86 live-boot essentials (initrd) ----
 CONFIG_BLK_DEV_INITRD=y
 # initramfs decompression support — must cover however we repack the initrd

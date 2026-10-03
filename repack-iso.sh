@@ -462,21 +462,26 @@ for cand in /mnt/efi/EFI/BOOT/bootia32.efi /mnt/efi/EFI/BOOT/BOOTIA32.EFI \
 done
 
 $BB cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
-set timeout=2
+set timeout=10
 set default=0
-menuentry "Android (Bass OS 16.9.7) - installed on eMMC" {
+menuentry "Bass OS 16.9.7 (Android 13) - Yoga Book" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb DATA=data YB_INSTALL=0
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
-menuentry "Android - installed on eMMC, SAFE GRAPHICS (nomodeset)" {
+menuentry "Bass OS 16.9.7 - Safe Graphics (nomodeset)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset HWACCEL=0 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    initrd /initrd.img
+}
+menuentry "Bass OS 16.9.7 - Debug Mode (Console shell)" {
+    search --no-floppy --file /kernel --set=root
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 DEBUG=2 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Reinstall to SD card (keeps this eMMC install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb YB_TARGET=sd
+    linux /kernel root=/dev/ram0 SRC=/and-yb YB_TARGET=sd lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 GRUB
@@ -648,26 +653,31 @@ fi
 # sources /efi/boot/android.cfg - THAT is where the effective menu lives
 # (boot/grub/grub.cfg merely sources it). Replace android.cfg itself, keep
 # the original reachable as a debug entry.
-MENU='set timeout=5
+MENU='set timeout=10
 set default=0
 menuentry "Yoga Book - INSTALL ANDROID TO eMMC (ERASES WINDOWS!) - default" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=emmc
+    linux /kernel root=/dev/ram0 YB_TARGET=emmc lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Yoga Book - AUTO-INSTALL to SD card (keeps Windows)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_TARGET=sd
+    linux /kernel root=/dev/ram0 YB_TARGET=sd lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Yoga Book - Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_INSTALL=0
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Yoga Book - Live boot, SAFE GRAPHICS (try this if boot panics/hangs)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive YB_INSTALL=0 nomodeset
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 nomodeset HWACCEL=0 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    initrd /initrd.img
+}
+menuentry "Yoga Book - Live boot, DEBUG (Console shell)" {
+    search --no-floppy --file /kernel --set=root
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 DEBUG=2 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Bliss original menu (debug)" {
