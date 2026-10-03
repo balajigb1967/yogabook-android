@@ -464,14 +464,14 @@ done
 $BB cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
 set timeout=5
 set default=0
-menuentry "Bass OS 16.9.7 (Android 13) - Yoga Book (Safe Graphics) - default" {
+menuentry "Bass OS 16.9.7 (Android 13) - Yoga Book - default" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 HWC=drm_minigbm_celadon GRALLOC=minigbm i915.modeset=1 i915.enable_psr=0 androidboot.hardware=android_x86_64 androidboot.fake_battery=1 SET_FAKE_BATTERY_LEVEL=100 SET_FAKE_CHARGING_STATUS=1 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
-menuentry "Bass OS 16.9.7 - Hardware Accelerated (Intel i915)" {
+menuentry "Bass OS 16.9.7 - Safe Graphics (nomodeset)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 HWC=drm_minigbm_celadon GRALLOC=minigbm androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64 androidboot.fake_battery=1 SET_FAKE_BATTERY_LEVEL=100 SET_FAKE_CHARGING_STATUS=1 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Bass OS 16.9.7 - Debug Mode (Console shell)" {
@@ -667,17 +667,17 @@ menuentry "Yoga Book - AUTO-INSTALL to SD card (keeps Windows)" {
 }
 menuentry "Yoga Book - Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 HWC=drm_minigbm_celadon GRALLOC=minigbm androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 HWC=drm_minigbm_celadon GRALLOC=minigbm i915.modeset=1 i915.enable_psr=0 androidboot.hardware=android_x86_64 androidboot.fake_battery=1 SET_FAKE_BATTERY_LEVEL=100 SET_FAKE_CHARGING_STATUS=1 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Yoga Book - Live boot, SAFE GRAPHICS (try this if boot panics/hangs)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64 androidboot.fake_battery=1 SET_FAKE_BATTERY_LEVEL=100 SET_FAKE_CHARGING_STATUS=1 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Yoga Book - Live boot, DEBUG (Console shell)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 DEBUG=2 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 DEBUG=2 androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Bliss original menu (debug)" {

@@ -60,10 +60,8 @@ CONFIG_EFIVAR_FS=y
 # ---- Early graphics ----
 CONFIG_DRM=y
 CONFIG_DRM_I915=y
-# SimpleDRM conflicts with i915 DRM/KMS aperture handover, causing SurfaceFlinger
-# to open card0 (simpledrm) with no acceleration and loop-crash at a blank screen.
-# CONFIG_DRM_SIMPLEDRM is not set
-# CONFIG_SYSFB_SIMPLEFB is not set
+CONFIG_SYSFB_SIMPLEFB=y
+CONFIG_DRM_SIMPLEDRM=y
 CONFIG_FRAMEBUFFER_CONSOLE=y
 
 # ---- Yoga Book hardware drivers built-in (PMIC, battery, charger, backlight, touch) ----
