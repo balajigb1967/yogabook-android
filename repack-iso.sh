@@ -197,6 +197,9 @@ cat > "$WORK/initrd/sbin/yogabook-autostall" <<'INSTALLER'
 # cmdline YB_TARGET=emmc switches to the destructive eMMC wipe install.
 # All output goes to console so the user sees every step.
 exec >/dev/console 2>&1
+# Silence harmless kernel chatter (such as modem retry timeouts and NOHZ softirq warnings)
+# so the screen remains clean and shows actual installer progress.
+echo "1 1 1 1" > /proc/sys/kernel/printk 2>/dev/null || true
 BB=/sbin/busybox-yb
 [ -x "$BB" ] || BB=/bin/busybox
 [ -x "$BB" ] || { echo "[YB] no installer toolbox"; exit 0; }
@@ -376,10 +379,17 @@ fi
 echo "!!!! AUTO-INSTALL: erasing $TGT in 10 seconds — POWER OFF NOW TO ABORT !!!!"
 $BB sleep 10
 
-# obliterate ALL previous installation signatures (old GRUB, Windows Boot
-# Manager, stale GPT) so nothing old can be picked up by the firmware
-$BB dd if=/dev/zero of="$TGT" bs=1M count=2 2>/dev/null || true
+# Obliterate ALL previous installation signatures:
+# 1) Start of disk: MBR and primary GPT
+$BB dd if=/dev/zero of="$TGT" bs=1M count=4 2>/dev/null || true
+# 2) End of disk: secondary/backup GPT (prevents UEFI from restoring stale GPT partitions)
+TOTAL_SECTORS="$($BB blockdev --getsz "$TGT" 2>/dev/null || echo 0)"
+if [ "$TOTAL_SECTORS" -gt 4096 ] 2>/dev/null; then
+    SEEK=$((TOTAL_SECTORS - 2048))
+    $BB dd if=/dev/zero of="$TGT" bs=512 seek="$SEEK" count=2048 2>/dev/null || true
+fi
 
+echo "[YB] Partitioning $TGT (ESP + DATA)..."
 $BB fdisk "$TGT" <<FD
 o
 n
@@ -388,7 +398,9 @@ p
 
 +256M
 t
-c
+ef
+a
+1
 n
 p
 2
@@ -398,50 +410,68 @@ w
 FD
 $BB blockdev --rereadpt "$TGT" 2>/dev/null || true
 $BB sleep 1
-$BB mkdosfs -n ANDROID "$P1"
+$BB mkdosfs -F 32 -n ANDROID "$P1"
 # busybox mke2fs has NO -t option (it fails with usage text!) and writes an
 # ext2 filesystem - which the Yoga-Book kernel mounts fine through its ext4
 # driver (CONFIG_EXT4_USE_FOR_EXT2=y, no standalone EXT2_FS).
 $BB mke2fs -F -L DATA "$P2"
 
-# ---- stage files ----
+# ---- stage 1: bootloader & kernel FIRST ----
+# Install bootloader first so the system is bootable immediately, even if
+# the user inspects the disk or power is lost later.
+echo "[YB] [1/3] Setting up UEFI bootloader on ESP..."
 $BB mkdir -p /mnt/efi /mnt/data
 $BB mount "$P1" /mnt/efi || { echo "[YB] ESP mount failed"; exit 1; }
-# kernel + initrd are small and live on the ESP; the multi-GB system image
-# cannot fit a 256M ESP, so it is staged on the DATA partition (classic
-# Android-x86 layout: the boot entries pass SRC=/and-yb so init.orig finds
-# $SRC/system.efs there; Bliss 16 ships EROFS, erofs.ko is in the initrd)
-$BB cp /mnt/src/kernel /mnt/src/initrd.img /mnt/efi/
-$BB mount "$P2" /mnt/data || { echo "[YB] DATA mount failed"; exit 1; }
-$BB mkdir -p /mnt/data/and-yb
-for f in /mnt/src/ramdisk.img /mnt/src/system.efs /mnt/src/system.sfs /mnt/src/system.img; do
-    [ -f "$f" ] && $BB cp "$f" /mnt/data/and-yb/
-done
-# integrity gates: never report COMPLETE unless the essentials really landed
-[ -f /mnt/efi/kernel ] && [ -f /mnt/efi/initrd.img ] || { echo "[YB] kernel/initrd copy failed"; exit 1; }
-[ -f /mnt/data/and-yb/system.efs ] || [ -f /mnt/data/and-yb/system.sfs ] || [ -f /mnt/data/and-yb/system.img ] || { echo "[YB] system image copy failed"; exit 1; }
 
-# source dir is 'efi/boot' (lowercase) on the ISO — match any case
-ESPBOOT=""
-for cand in /mnt/src/EFI/BOOT /mnt/src/efi/boot /mnt/src/efi/BOOT /mnt/src/EFI/boot; do
-    [ -d "$cand" ] && ESPBOOT="$cand" && break
+# Copy kernel + initrd to ESP
+$BB cp /mnt/src/kernel /mnt/src/initrd.img /mnt/efi/
+
+# Copy all EFI trees from the installation medium
+if [ -d /mnt/src/EFI ]; then
+    $BB cp -r /mnt/src/EFI /mnt/efi/
+fi
+if [ -d /mnt/src/efi ]; then
+    $BB cp -r /mnt/src/efi /mnt/efi/
+fi
+$BB mkdir -p /mnt/efi/EFI/BOOT /mnt/efi/EFI/Microsoft/Boot
+
+# Locate bootx64.efi from medium or ESP
+BOOT_EFI=""
+for cand in /mnt/efi/EFI/BOOT/bootx64.efi /mnt/efi/EFI/BOOT/BOOTX64.EFI \
+            /mnt/src/EFI/BOOT/bootx64.efi /mnt/src/EFI/BOOT/BOOTX64.EFI \
+            /mnt/src/efi/boot/bootx64.efi /mnt/src/efi/boot/BOOTX64.EFI; do
+    [ -f "$cand" ] && BOOT_EFI="$cand" && break
 done
-if [ -n "$ESPBOOT" ]; then
-    $BB mkdir -p /mnt/efi/EFI/BOOT
-    $BB cp -r "$ESPBOOT/." /mnt/efi/EFI/BOOT/
+if [ -n "$BOOT_EFI" ]; then
+    $BB cp "$BOOT_EFI" /mnt/efi/EFI/BOOT/bootx64.efi
+    $BB cp "$BOOT_EFI" /mnt/efi/EFI/BOOT/BOOTX64.EFI
+    # Intercept hardcoded Windows Boot Manager NVRAM entries:
+    # Lenovo Yoga Book firmware tries to boot \EFI\Microsoft\Boot\bootmgfw.efi
+    $BB cp "$BOOT_EFI" /mnt/efi/EFI/Microsoft/Boot/bootmgfw.efi
+    $BB cp "$BOOT_EFI" /mnt/efi/EFI/Microsoft/Boot/BOOTMGFW.EFI
 fi
 
+for cand in /mnt/efi/EFI/BOOT/bootia32.efi /mnt/efi/EFI/BOOT/BOOTIA32.EFI \
+            /mnt/src/EFI/BOOT/bootia32.efi /mnt/src/EFI/BOOT/BOOTIA32.EFI; do
+    if [ -f "$cand" ]; then
+        $BB cp "$cand" /mnt/efi/EFI/BOOT/bootia32.efi
+        $BB cp "$cand" /mnt/efi/EFI/BOOT/BOOTIA32.EFI
+        $BB cp "$cand" /mnt/efi/EFI/Microsoft/Boot/bootia32.efi 2>/dev/null || true
+        break
+    fi
+done
+
 $BB cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
-set timeout=1
+set timeout=2
 set default=0
 menuentry "Android (Bass OS 16.9.7) - installed on eMMC" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb DATA=$P2
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb DATA=data YB_INSTALL=0
     initrd /initrd.img
 }
-menuentry "Android - installed on eMMC, SAFE GRAPHICS (try this if boot panics/hangs)" {
+menuentry "Android - installed on eMMC, SAFE GRAPHICS (nomodeset)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb DATA=$P2 nomodeset
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset
     initrd /initrd.img
 }
 menuentry "Reinstall to SD card (keeps this eMMC install)" {
@@ -450,26 +480,73 @@ menuentry "Reinstall to SD card (keeps this eMMC install)" {
     initrd /initrd.img
 }
 GRUB
-# the firmware-loaded GRUB sources android.cfg next to BOOTX64.EFI - our
-# menu must live THERE or the stock Bliss menu takes over (or nothing boots)
-if [ -f /mnt/efi/EFI/BOOT/android.cfg ]; then
-    $BB mv /mnt/efi/EFI/BOOT/android.cfg /mnt/efi/EFI/BOOT/android.cfg.bliss
-fi
+
+# Mirror grub.cfg across all paths firmware or GRUB could inspect
 $BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/android.cfg
-# some firmwares read /EFI/BOOT/grub/grub.cfg instead
 $BB mkdir -p /mnt/efi/EFI/BOOT/grub 2>/dev/null || true
 $BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/grub/grub.cfg 2>/dev/null || true
-$BB umount /mnt/efi
-$BB umount /mnt/data 2>/dev/null
+$BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/Microsoft/Boot/grub.cfg 2>/dev/null || true
+$BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/Microsoft/Boot/android.cfg 2>/dev/null || true
+$BB mkdir -p /mnt/efi/boot/grub 2>/dev/null || true
+$BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/boot/grub/grub.cfg 2>/dev/null || true
+$BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/grub.cfg 2>/dev/null || true
+
+# integrity gates for bootloader
+[ -f /mnt/efi/kernel ] && [ -f /mnt/efi/initrd.img ] || { echo "[YB] kernel/initrd copy failed"; exit 1; }
+[ -f /mnt/efi/EFI/BOOT/BOOTX64.EFI ] || [ -f /mnt/efi/EFI/BOOT/bootx64.efi ] || { echo "[YB] EFI bootloader missing"; exit 1; }
 
 $BB sync
+$BB umount /mnt/efi
+echo "[YB] [1/3] UEFI bootloader setup COMPLETE."
+
+# ---- stage 2: system image & data ----
+echo "[YB] [2/3] Installing Android system image to eMMC..."
+$BB mount "$P2" /mnt/data || { echo "[YB] DATA mount failed"; exit 1; }
+$BB mkdir -p /mnt/data/and-yb/data
+
+for f in /mnt/src/ramdisk.img /mnt/src/system.efs /mnt/src/system.sfs /mnt/src/system.img; do
+    if [ -f "$f" ]; then
+        BN="$($BB basename "$f")"
+        FSIZE="$($BB ls -l "$f" 2>/dev/null | $BB awk '{print int($5/1048576)}')"
+        echo "[YB] Copying $BN (${FSIZE:-unknown} MB) - this takes approx. 2-3 minutes, please wait..."
+        $BB cp "$f" /mnt/data/and-yb/ &
+        CPPID=$!
+        while $BB kill -0 "$CPPID" 2>/dev/null; do
+            COPIED="$($BB ls -l "/mnt/data/and-yb/$BN" 2>/dev/null | $BB awk '{print int($5/1048576)}')"
+            [ -n "$COPIED" ] && echo "[YB]   ... ${COPIED} MB / ${FSIZE} MB copied"
+            $BB sleep 5
+        done
+        wait "$CPPID" 2>/dev/null || true
+        echo "[YB] $BN copied successfully."
+    fi
+done
+
+# integrity gate for system image
+[ -f /mnt/data/and-yb/system.efs ] || [ -f /mnt/data/and-yb/system.sfs ] || [ -f /mnt/data/and-yb/system.img ] || {
+    echo "[YB] ERROR: system image copy failed"; exit 1;
+}
+
+echo "[YB] [2/3] Android system image installation COMPLETE."
+echo "[YB] [3/3] Flushing data to storage (sync)..."
+$BB sync
+$BB umount /mnt/data 2>/dev/null || true
+$BB sync
+echo "[YB] [3/3] Storage synced."
+
 if [ "$TARGET" = "emmc" ]; then
-    echo "[YB] AUTO-INSTALL COMPLETE (eMMC wiped, Android installed) - powering off"
+    echo "[YB] ==========================================================="
+    echo "[YB] AUTO-INSTALL COMPLETE! Android is installed to eMMC."
+    echo "[YB] The tablet will now power off."
+    echo "[YB] Remove the USB flash drive and press Power to boot Android!"
+    echo "[YB] ==========================================================="
 else
-    echo "[YB] AUTO-INSTALL COMPLETE (SD card ready) - remove USB stick; keep SD in"
-    echo "[YB] Power on and pick the SD entry in the Volume-Up boot menu."
+    echo "[YB] ==========================================================="
+    echo "[YB] AUTO-INSTALL COMPLETE! Android is installed to SD card."
+    echo "[YB] The tablet will now power off."
+    echo "[YB] Remove the USB flash drive; keep the SD card inserted."
+    echo "[YB] ==========================================================="
 fi
-$BB sleep 2
+$BB sleep 3
 $BB poweroff -f
 exit 0
 INSTALLER
@@ -493,6 +570,7 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin; export PATH
 $BB mount -t proc proc /proc 2>/dev/null
 $BB mount -t sysfs sysfs /sys 2>/dev/null
 $BB mount -t devtmpfs devtmpfs /dev 2>/dev/null
+echo "1 1 1 1" > /proc/sys/kernel/printk 2>/dev/null || true
 # Our Yoga Book kernel builds USB storage, SD/eMMC hosts and HID as MODULES,
 # and nothing else in this initrd loads them: without this, neither the
 # installer nor Android's init ever see any disk.
@@ -623,8 +701,8 @@ fi
 # basic-data partition covering the whole ISO) is kept verbatim - it is the
 # exact hybrid layout Bliss ships and the only one xorriso builds cleanly.
 OPTS="$(xorriso -indev "$BASE" -report_el_torito as_mkisofs 2>/dev/null \
-    | sed 's#-isohybrid-mbr --interval:[^ ]* #-isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin #' \
-    | tr '\n' ' ' || true)"
+    | tr '\n' ' ' \
+    | sed -E 's#-isohybrid-mbr\s+--interval:[^ ]+#-isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin#g' || true)"
 echo ">>> Rebuilding $OUT (boot opts: ${OPTS:-<fallback BIOS-only>})"
 rm -f "$OUT"
 
@@ -638,10 +716,12 @@ if [[ -n "$OPTS" ]] && grep -q "isohdpfx" <<<"$OPTS"; then
     fi
 fi
 if [[ "$BUILD_OK" != 1 ]]; then
-    echo ">>> Falling back to plain BIOS build"
+    echo ">>> Falling back to hybrid EFI+BIOS build"
     xorriso -as mkisofs -o "$OUT" -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
         -c isolinux/boot.cat -b isolinux/isolinux.bin -no-emul-boot \
-        -boot-load-size 4 -boot-info-table -V "BlissOS-YogaBook" "$WORK/iso"
+        -boot-load-size 4 -boot-info-table \
+        -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot -boot-load-size 30720 -isohybrid-gpt-basdat \
+        -V "BlissOS-YogaBook" "$WORK/iso"
 fi
 
 echo ">>> Result:"

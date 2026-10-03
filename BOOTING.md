@@ -127,28 +127,39 @@ Screen rotation may need the auto-rotate toggle in quick settings.
   Bliss banner. **Reflash the newest ISO.** If it appears **without** the
   USB stick inserted, the eMMC install never completed.
 
-### What a correct auto-install run looks like (new builds)
-1. GRUB: 3 s countdown on the default **AUTO-INSTALL to SD** entry
-2. Kernel messages scroll (no quiet), then `[YB] auto-installer starting...`
-   (the shim first loads USB-storage/SD/HID modules — silent, a few seconds)
-3. Guard output: either nothing (positive Yoga Book DMI match) or
-   `[YB] DMI inconclusive - continuing, SD card only` (safe: SD-only path
-   never aborts on a missing ID; the **eMMC wipe** entry still refuses
-   without a positive `YB1-X9xF`/`YB1-X9xL` match)
-4. `[YB] MODE: install to SD card...` + `[YB] target device: mmcblkX`
-   (or `[YB] no removable SD card found` → live boot, nothing harmed)
-4. `!!!! AUTO-INSTALL: erasing ... POWER OFF NOW TO ABORT !!!!` (10 s window)
-5. Partition/format/copy steps print to screen
-6. `AUTO-INSTALL COMPLETE - powering off` → remove stick, power on
+- **"Windows Boot Manager boot failed."** (teal dialog on startup):
+  This occurs when Windows on internal eMMC was wiped, but the UEFI NVRAM
+  still has "Windows Boot Manager" set as default pointing to `\EFI\Microsoft\Boot\bootmgfw.efi`.
+  The latest ISO installer installs a shim at `\EFI\Microsoft\Boot\bootmgfw.efi`
+  and sets the ESP partition type to EFI (`0xEF`), which intercepts this call
+  and boots GRUB directly. If you see this error, it means the previous install
+  was interrupted during the file copy stage before the bootloader was finalized.
+  Simply plug the USB stick back in, boot with **Volume Up**, and let the auto-install complete.
 
-If any step fails it prints the reason and falls through to **live boot from
-the stick** — Android still runs, eMMC untouched.
+- **Modem (`intel-cht-modem INT34D0:00: XMM7260 ... GET_STATUS failed: -5`) and `NOHZ tick-stop error` messages during installation**:
+  These are harmless kernel driver logs:
+  - On WiFi models (YB1-X91F), the Intel LTE modem driver probes the internal SSIC bus and times out because no cellular modem hardware/firmware is present.
+  - The `NOHZ tick-stop error` is a standard Linux kernel warning when heavy eMMC disk writeback occurs during tickless idle.
+  Neither is a fatal error. The installer now suppresses these kernel log messages
+  from `/dev/console` and displays a real-time progress counter (`... MB / ... MB copied`)
+  while writing `system.efs` (~2.2 GB) to eMMC (takes ~2–3 minutes). Do not power off while this runs!
+
+### What a correct auto-install run looks like (new builds)
+1. GRUB: 3 s countdown on the default **INSTALL ANDROID TO eMMC** entry
+2. Kernel boots, then `[YB] auto-installer starting...`
+3. Yoga Book DMI is verified
+4. `[YB] MODE: WIPE eMMC AND INSTALL ANDROID`
+5. `!!!! AUTO-INSTALL: erasing ... in 10 seconds — POWER OFF NOW TO ABORT !!!!`
+6. `[YB] [1/3] Setting up UEFI bootloader on ESP... COMPLETE`
+7. `[YB] [2/3] Installing Android system image to eMMC...` with live MB progress updates
+8. `[YB] [3/3] Flushing data to storage (sync)...`
+9. `AUTO-INSTALL COMPLETE! Tablet is powering off now.`
+10. Remove the USB stick, power on, and Android boots directly into Bass OS!
 
 ### Did the old (buggy) build wipe my Windows? Quick check
 Power on **normally, no USB**: Lenovo logo → Windows boots = eMMC untouched.
-Boot straight to the purple panic or a GRUB shell = the eMMC was re-partitioned;
-Windows is gone but a fresh auto-install (new ISO) is unaffected — it wipes
-and reinstalls anyway.
-- **No boot menu at all:** USB wasn't flashed in DD mode, or Secure Boot is still on.
+Boot straight to "Windows Boot Manager boot failed" or purple panic = the eMMC was re-partitioned;
+Windows is gone. Boot the updated USB stick to complete the Android installation cleanly.
+- **No boot menu at all:** USB wasn't flashed properly, or Secure Boot is still on.
 - **Digitizer dead but screen works:** kernel booted with wrong DMI; check `adb shell dmesg | grep -i wacom` and report in the repo.
 - **Boot loop:** try the `Safe mode` GRUB entry, then `adb logcat` via USB debugging.
