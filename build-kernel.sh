@@ -75,7 +75,8 @@ make O=out olddefconfig
 
 echo ">>> Merged config sanity check"
 for sym in CONFIG_ANDROID_BINDERFS CONFIG_INPUT_UINPUT CONFIG_HIDRAW \
-           CONFIG_DRM_I915 CONFIG_PSI CONFIG_DRM_SIMPLEDRM; do
+           CONFIG_DRM_I915 CONFIG_PSI CONFIG_INTEL_SOC_PMIC_CHTDC_TI \
+           CONFIG_BATTERY_BQ27XXX CONFIG_TOUCHSCREEN_GOODIX; do
     grep -q "^$sym=y\|^$sym=m" out/.config && echo "    OK   $sym" \
         || echo "    MISS $sym"
 done

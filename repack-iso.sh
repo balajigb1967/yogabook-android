@@ -462,21 +462,21 @@ for cand in /mnt/efi/EFI/BOOT/bootia32.efi /mnt/efi/EFI/BOOT/BOOTIA32.EFI \
 done
 
 $BB cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
-set timeout=10
+set timeout=5
 set default=0
-menuentry "Bass OS 16.9.7 (Android 13) - Yoga Book" {
+menuentry "Bass OS 16.9.7 (Android 13) - Yoga Book (Safe Graphics) - default" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
-menuentry "Bass OS 16.9.7 - Safe Graphics (nomodeset)" {
+menuentry "Bass OS 16.9.7 - Hardware Accelerated (Intel i915)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset HWACCEL=0 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 HWC=drm_minigbm_celadon GRALLOC=minigbm androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Bass OS 16.9.7 - Debug Mode (Console shell)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 DEBUG=2 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 DEBUG=2 androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Reinstall to SD card (keeps this eMMC install)" {
@@ -667,12 +667,12 @@ menuentry "Yoga Book - AUTO-INSTALL to SD card (keeps Windows)" {
 }
 menuentry "Yoga Book - Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 HWC=drm_minigbm_celadon GRALLOC=minigbm androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Yoga Book - Live boot, SAFE GRAPHICS (try this if boot panics/hangs)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 nomodeset HWACCEL=0 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
     initrd /initrd.img
 }
 menuentry "Yoga Book - Live boot, DEBUG (Console shell)" {

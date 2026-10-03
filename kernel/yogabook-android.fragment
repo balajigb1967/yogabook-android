@@ -60,9 +60,25 @@ CONFIG_EFIVAR_FS=y
 # ---- Early graphics ----
 CONFIG_DRM=y
 CONFIG_DRM_I915=y
-CONFIG_SYSFB_SIMPLEFB=y
-CONFIG_DRM_SIMPLEDRM=y
+# SimpleDRM conflicts with i915 DRM/KMS aperture handover, causing SurfaceFlinger
+# to open card0 (simpledrm) with no acceleration and loop-crash at a blank screen.
+# CONFIG_DRM_SIMPLEDRM is not set
+# CONFIG_SYSFB_SIMPLEFB is not set
 CONFIG_FRAMEBUFFER_CONSOLE=y
+
+# ---- Yoga Book hardware drivers built-in (PMIC, battery, charger, backlight, touch) ----
+# Built directly into bzImage so Android's battery service, backlight, and touch work
+# immediately upon boot without relying on modular insmod.
+CONFIG_INTEL_SOC_PMIC_CHTDC_TI=y
+CONFIG_BATTERY_BQ27XXX=y
+CONFIG_BATTERY_BQ27XXX_I2C=y
+CONFIG_CHARGER_BQ25890=y
+CONFIG_AXP288_CHARGER=y
+CONFIG_AXP288_FUEL_GAUGE=y
+CONFIG_BACKLIGHT_PWM=y
+CONFIG_TOUCHSCREEN_GOODIX=y
+CONFIG_TOUCHSCREEN_HIDEEP=y
+CONFIG_HID_GOODIX_SPI=y
 
 # ---- Yoga Book input devices as seen by Android userspace ----
 CONFIG_INPUT_UINPUT=y
