@@ -36,8 +36,12 @@ echo ">>> Extracting base ISO"
 xorriso -osirrox on -indev "$BASE" -extract / "$WORK/iso" >/dev/null 2>&1
 [[ -f "$WORK/iso/kernel" ]] || { echo "ERROR: no /kernel in ISO" >&2; exit 1; }
 
-echo ">>> Replacing kernel"
-install -m 0644 "$BZIMAGE" "$WORK/iso/kernel"
+if [[ "$BZIMAGE" != "stock" && "$BZIMAGE" != "none" && -f "$BZIMAGE" ]]; then
+    echo ">>> Replacing kernel with $BZIMAGE"
+    install -m 0644 "$BZIMAGE" "$WORK/iso/kernel"
+else
+    echo ">>> Keeping stock base ISO kernel"
+fi
 
 # ---- initrd.img: unpack, inject, repack ----
 unpack_cpio() {
@@ -50,22 +54,23 @@ unpack_cpio() {
 echo ">>> Unpacking initrd.img"
 unpack_cpio "$WORK/iso/initrd.img" "$WORK/initrd"
 
-echo ">>> Merging module tree ($KREL) into initrd"
-tar xzf "$MODULES_TGZ" -C "$WORK/initrd"
-for d in "$WORK"/initrd/lib/modules/*; do
-    [[ "$(basename "$d")" == "$KREL" ]] || { echo "    removing stale modules: $(basename "$d")"; rm -rf "$d"; }
-done
+if [[ "$MODULES_TGZ" != "stock" && "$MODULES_TGZ" != "none" && -f "$MODULES_TGZ" ]]; then
+    echo ">>> Merging module tree ($KREL) into initrd"
+    tar xzf "$MODULES_TGZ" -C "$WORK/initrd"
+    for d in "$WORK"/initrd/lib/modules/*; do
+        [[ "$(basename "$d")" == "$KREL" ]] || { echo "    removing stale modules: $(basename "$d")"; rm -rf "$d"; }
+    done
 
-# Older kernels ship modules as .ko.zst (CONFIG_MODULE_COMPRESS_ZSTD) which
-# busybox modprobe cannot load - decompress everything to plain .ko.
-if find "$WORK/initrd/lib/modules" -name '*.ko.zst' | grep -q .; then
-    echo ">>> Decompressing .ko.zst modules (busybox modprobe can't read zstd)"
-    command -v zstd >/dev/null || { echo "FATAL: zstd required" >&2; exit 1; }
-    find "$WORK/initrd/lib/modules" -name '*.ko.zst' -print0 |
-        while IFS= read -r -d '' f; do zstd -q -d -f "$f" -o "${f%.ko.zst}.ko" && rm -f "$f"; done
-    # depmod metadata still references .ko.zst paths - regenerate it
-    depmod -b "$WORK/initrd" "$KREL"
-fi
+    # Older kernels ship modules as .ko.zst (CONFIG_MODULE_COMPRESS_ZSTD) which
+    # busybox modprobe cannot load - decompress everything to plain .ko.
+    if find "$WORK/initrd/lib/modules" -name '*.ko.zst' | grep -q .; then
+        echo ">>> Decompressing .ko.zst modules (busybox modprobe can't read zstd)"
+        command -v zstd >/dev/null || { echo "FATAL: zstd required" >&2; exit 1; }
+        find "$WORK/initrd/lib/modules" -name '*.ko.zst' -print0 |
+            while IFS= read -r -d '' f; do zstd -q -d -f "$f" -o "${f%.ko.zst}.ko" && rm -f "$f"; done
+        # depmod metadata still references .ko.zst paths - regenerate it
+        depmod -b "$WORK/initrd" "$KREL"
+    fi
 
 # ---- SLIM INITRD ----
 # The initramfs must stay small: a ~176MB initrd (the full 7.2.0 module tree)
@@ -151,6 +156,9 @@ isofs udf nls_cp437 nls_ascii nls_base nls_iso8859-1 nls_utf8 vfat fat erofs"
     done
     for m in $remaining; do printf '%s\n' "$m" >> "$LOADORDER"; done
     echo "    loadorder: $(wc -l < "$LOADORDER") modules"
+fi
+else
+    echo ">>> Keeping stock initrd module tree"
 fi
 
 if [[ -n "$ASSETS" && -f "$ASSETS/busybox-yb" ]]; then
@@ -464,24 +472,24 @@ done
 $BB cat > /mnt/efi/EFI/BOOT/grub.cfg <<GRUB
 set timeout=5
 set default=0
-menuentry "Bass OS 16.9.7 (Android 13) - Yoga Book - default" {
+menuentry "Bass OS 16.9.7 (Android 13) - default" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 HWC=drm_minigbm_celadon GRALLOC=minigbm i915.modeset=1 i915.enable_psr=0 androidboot.hardware=android_x86_64 androidboot.fake_battery=1 SET_FAKE_BATTERY_LEVEL=100 SET_FAKE_CHARGING_STATUS=1 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 quiet HWC=drm_minigbm_celadon GRALLOC=minigbm androidboot.hardware=android_x86_64
     initrd /initrd.img
 }
 menuentry "Bass OS 16.9.7 - Safe Graphics (nomodeset)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64 androidboot.fake_battery=1 SET_FAKE_BATTERY_LEVEL=100 SET_FAKE_CHARGING_STATUS=1 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64
     initrd /initrd.img
 }
 menuentry "Bass OS 16.9.7 - Debug Mode (Console shell)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 DEBUG=2 androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 SRC=/and-yb DATA=data YB_INSTALL=0 DEBUG=2 androidboot.hardware=android_x86_64
     initrd /initrd.img
 }
 menuentry "Reinstall to SD card (keeps this eMMC install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 SRC=/and-yb YB_TARGET=sd lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 SRC=/and-yb YB_TARGET=sd
     initrd /initrd.img
 }
 GRUB
@@ -621,7 +629,9 @@ echo ">>> Initrd integrity checks"
 [ -f "$WORK/initrd/init.orig" ]              || { echo "FATAL: /init.orig missing (original Android init)" >&2; exit 1; }
 [ -x "$WORK/initrd/sbin/yogabook-autostall" ] || { echo "FATAL: installer script missing" >&2; exit 1; }
 [ -e "$WORK/initrd/bin/sh" ]                 || { echo "FATAL: /bin/sh missing - /init shebang would fail" >&2; exit 1; }
-[ -d "$WORK/initrd/lib/modules/$KREL" ]      || { echo "FATAL: /lib/modules/$KREL missing" >&2; exit 1; }
+if [[ "$MODULES_TGZ" != "stock" && "$MODULES_TGZ" != "none" ]]; then
+    [ -d "$WORK/initrd/lib/modules/$KREL" ]  || { echo "FATAL: /lib/modules/$KREL missing" >&2; exit 1; }
+fi
 [ -d "$WORK/initrd/proc" ]                   || echo "WARN: /proc mountpoint missing in initrd"
 [ -d "$WORK/initrd/sys" ]                    || echo "WARN: /sys mountpoint missing in initrd"
 echo "    tree: $(find "$WORK/initrd" | wc -l) entries, $(du -sh "$WORK/initrd" | cut -f1)"
@@ -657,27 +667,27 @@ MENU='set timeout=10
 set default=0
 menuentry "Yoga Book - INSTALL ANDROID TO eMMC (ERASES WINDOWS!) - default" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_TARGET=emmc lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_TARGET=emmc
     initrd /initrd.img
 }
 menuentry "Yoga Book - AUTO-INSTALL to SD card (keeps Windows)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_TARGET=sd lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_TARGET=sd
     initrd /initrd.img
 }
-menuentry "Yoga Book - Live boot (no install)" {
+menuentry "Bass OS 16.9.7 - Live boot (no install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 HWC=drm_minigbm_celadon GRALLOC=minigbm i915.modeset=1 i915.enable_psr=0 androidboot.hardware=android_x86_64 androidboot.fake_battery=1 SET_FAKE_BATTERY_LEVEL=100 SET_FAKE_CHARGING_STATUS=1 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 quiet HWC=drm_minigbm_celadon GRALLOC=minigbm androidboot.hardware=android_x86_64
     initrd /initrd.img
 }
-menuentry "Yoga Book - Live boot, SAFE GRAPHICS (try this if boot panics/hangs)" {
+menuentry "Bass OS 16.9.7 - Live boot, SAFE GRAPHICS (try this if boot panics/hangs)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64 androidboot.fake_battery=1 SET_FAKE_BATTERY_LEVEL=100 SET_FAKE_CHARGING_STATUS=1 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 nomodeset HWACCEL=0 androidboot.hardware=android_x86_64
     initrd /initrd.img
 }
-menuentry "Yoga Book - Live boot, DEBUG (Console shell)" {
+menuentry "Bass OS 16.9.7 - Live boot, DEBUG (Console shell)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 YB_INSTALL=0 DEBUG=2 androidboot.hardware=android_x86_64 lsm=landlock,lockdown,yama,integrity,selinux security=selinux selinux=1 androidboot.selinux=permissive
+    linux /kernel root=/dev/ram0 YB_INSTALL=0 DEBUG=2 androidboot.hardware=android_x86_64
     initrd /initrd.img
 }
 menuentry "Bliss original menu (debug)" {

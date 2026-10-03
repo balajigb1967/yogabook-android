@@ -18,6 +18,10 @@ on:
         description: "Bliss 16.9.7 variant (foss | gapps | vanilla)"
         required: false
         default: "foss"
+      kernel_type:
+        description: "Kernel to use: 'stock' (default Bliss 16 kernel with KernelSU) or 'custom' (7.2 tree)"
+        required: false
+        default: "stock"
 
 permissions:
   contents: write
@@ -68,6 +72,7 @@ jobs:
           ls -lh base.iso
 
       - name: Cache kernel source + objects
+        if: ${{ github.event.inputs.kernel_type == 'custom' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -80,6 +85,7 @@ jobs:
             yb-kernel-
 
       - name: Cache ccache
+        if: ${{ github.event.inputs.kernel_type == 'custom' }}
         uses: actions/cache@v4
         with:
           path: ~/.ccache
@@ -101,6 +107,7 @@ jobs:
             || echo "::warning::SOF topology fetch failed"
 
       - name: Build Yoga Book kernel
+        if: ${{ github.event.inputs.kernel_type == 'custom' }}
         run: |
           set -o pipefail
           bash ./build-kernel.sh 2>&1 | tee kernel-build.log
@@ -115,13 +122,20 @@ jobs:
           KERNEL_REF: master
           JOBS: "2"
 
-      - name: Repack ISO with Yoga Book kernel + modules + auto-installer
+      - name: Repack ISO with auto-installer
         run: |
-          KREL="$(cat artifacts/KREL)"
-          bash ./repack-iso.sh base.iso "artifacts/bzImage-$KREL" \
-            "artifacts/modules-$KREL.tar.gz" \
+          KERNEL_ARG="stock"
+          MODULES_ARG="stock"
+          KREL_ARG=""
+          if [ "${{ github.event.inputs.kernel_type }}" = "custom" ] && [ -f artifacts/KREL ]; then
+            KREL="$(cat artifacts/KREL)"
+            KERNEL_ARG="artifacts/bzImage-$KREL"
+            MODULES_ARG="artifacts/modules-$KREL.tar.gz"
+            KREL_ARG="artifacts/KREL"
+          fi
+          bash ./repack-iso.sh base.iso "$KERNEL_ARG" "$MODULES_ARG" \
             "YogaBook-BassOS-16.9.7-autoinstall-$(date +%Y%m%d)-x86_64.iso" \
-            assets artifacts/KREL
+            assets $KREL_ARG
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
