@@ -288,15 +288,33 @@ case "$SRCDEV" in
 esac
 echo "[YB] boot media: $SRCDEV (disk $SRCDISK)"
 
-# ---- pick the install target: ANY removable disk that is not the stick ----
-# Same late-probe concern as the boot media scan: the eMMC host (sdhci-acpi)
-# registers its block device asynchronously. Keep rescanning while we see
-# NOTHING (up to ~40s); a count >= 2 is a real ambiguity (e.g. an SD card
-# inserted during the eMMC install) and must abort right away.
-TGT=""
-COUNT=0
-tries=0
-while [ "$tries" -lt 20 ]; do
+# ---- pick the install target ----
+# The old 'removable'-flag heuristic fails on the YB1: the Realtek card
+# reader reports itself as NON-removable, so an inserted SD card looks like
+# a second fixed disk and eMMC was never "unique" (field report: 32G card
+# inserted -> count=2 -> abort). /sys/block/*/device/type is authoritative:
+# real eMMC prints "MMC", SD cards print "SD", USB sticks "Direct-Access".
+# Classify by type; keep the flag heuristic as fallback for QEMU/tests
+# where no MMC-type device exists.
+scan_targets() {
+    TGT=""
+    COUNT=0
+    for d in /sys/block/*; do
+        b="${d##*/}"
+        case "$b" in
+            loop*|ram*|sr*|md*|zram*|dm-*|nbd*|*rpmb*|mmcblk*boot*) continue ;;
+        esac
+        [ "/dev/$b" = "$SRCDISK" ] && continue
+        if [ "$TARGET" = "emmc" ]; then
+            [ "$($BB cat "$d/device/type" 2>/dev/null)" = "MMC" ] || continue
+        else
+            [ "$($BB cat "$d/device/type" 2>/dev/null)" = "SD" ] || continue
+        fi
+        TGT="/dev/$b"
+        COUNT=$((COUNT+1))
+    done
+}
+scan_targets_legacy() {
     TGT=""
     COUNT=0
     for d in /sys/block/*; do
@@ -309,12 +327,27 @@ while [ "$tries" -lt 20 ]; do
         TGT="/dev/$b"
         COUNT=$((COUNT+1))
     done
+}
+TGT=""
+tries=0
+while [ "$tries" -lt 20 ]; do
+    scan_targets
     if [ "$COUNT" -ge 1 ]; then break; fi
+    # no type-matched device yet - maybe hosts are still probing; retry
     tries=$((tries+1))
     $BB sleep 2
 done
+if [ "$COUNT" -ne 1 ]; then
+    # fallback: legacy removable-flag heuristic (QEMU disks, odd hosts)
+    scan_targets_legacy
+fi
 if [ "$TARGET" = "emmc" ]; then
-    [ "$COUNT" = "1" ] && [ -n "$TGT" ] || { echo "[YB] eMMC not uniquely identified (count=$COUNT) - remove any inserted SD card / extra USB disks and reboot"; exit 0; }
+    if [ "$COUNT" = "1" ] && [ -n "$TGT" ]; then :;
+    elif [ "$COUNT" -gt 1 ]; then
+        echo "[YB] multiple MMC disks found (count=$COUNT) - remove the inserted SD card and reboot"; exit 0
+    else
+        echo "[YB] no eMMC (MMC-type disk) found - aborting"; exit 0
+    fi
 else
     [ "$COUNT" = "1" ] && [ -n "$TGT" ] || {
         echo "[YB] no removable SD card found (count=$COUNT, boot stick=$SRCDISK) - insert one and reboot"
