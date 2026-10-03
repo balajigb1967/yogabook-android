@@ -94,7 +94,7 @@ sd_mod sr_mod cdrom scsi_mod ata_piix ahci libata nvme nvme_core \
 virtio_blk virtio_pci virtio virtio_ring \
 xhci-pci xhci-hcd ehci-pci ehci-hcd uhci-hcd \
 hid-multitouch i2c-hid intel-lpss intel-lpss-pci intel-lpss-acpi \
-isofs udf nls_cp437 nls_ascii nls_base vfat fat"
+isofs udf nls_cp437 nls_ascii nls_base nls_iso8859-1 nls_utf8 vfat fat erofs"
     for name in $KEEPLIST; do
         modprobe -d "$WORK/mroot" -S "$KREL" --show-depends "$name" 2>/dev/null |
         while IFS= read -r line; do
@@ -118,6 +118,39 @@ isofs udf nls_cp437 nls_ascii nls_base vfat fat"
     for name in usb-storage mmc_block sdhci rtsx_usb usbhid sr_mod isofs xhci-pci; do
         grep -aq "$name" "$MODDIR/modules.dep" || echo "    WARN: $name not in slim modules.dep"
     done
+    # Generate the dependency-ordered load list for the shim: busybox-yb's
+    # modprobe applet silently no-ops in this build (verified in QEMU: rc=0,
+    # nothing reaches the kernel), so the shim insmods by explicit path
+    # instead. Topological sort of modules.dep, deps first.
+    LOADORDER="$MODDIR/loadorder"
+    : > "$LOADORDER"
+    declare -A MODDEPS=()
+    while IFS=: read -r mp mdeps; do
+        MODDEPS["$mp"]="$mdeps"
+    done < "$MODDIR/modules.dep"
+    remaining="$(cut -d: -f1 "$MODDIR/modules.dep")"
+    done_list=" "
+    progress=1
+    while [ -n "${remaining// /}" ] && [ "$progress" = 1 ]; do
+        progress=0
+        left=""
+        for m in $remaining; do
+            ok=1
+            for d in ${MODDEPS[$m]:-}; do
+                case "$done_list" in *" $d "*) ;; *) ok=0; break ;; esac
+            done
+            if [ "$ok" = 1 ]; then
+                printf '%s\n' "$m" >> "$LOADORDER"
+                done_list="$done_list$m "
+                progress=1
+            else
+                left="$left $m"
+            fi
+        done
+        remaining="$left"
+    done
+    for m in $remaining; do printf '%s\n' "$m" >> "$LOADORDER"; done
+    echo "    loadorder: $(wc -l < "$LOADORDER") modules"
 fi
 
 if [[ -n "$ASSETS" && -f "$ASSETS/busybox-yb" ]]; then
@@ -177,9 +210,11 @@ case "$CMD" in
     *YB_INSTALL=0*)   exit 0 ;;
     *)                TARGET=emmc ;;   # DEFAULT: erase eMMC, install Android
 esac
-$BB umount /proc 2>/dev/null
-
-# ---- identify the machine BEFORE any destructive action ----
+# NOTE: /proc must STAY mounted here: busybox mount with no -t probes
+# /proc/filesystems to auto-detect the fs type - unmounting /proc makes
+# every later auto-detecting mount fail (this was the "cannot find boot
+# media" bug even with /dev/sr0 present and iso9660 registered). The shim
+# umounts /proc itself before exec'ing init.orig, so nothing to clean up.
 # /sys/class/dmi/id (CONFIG_DMIID=y, built-in) is primary; if it is unreadable
 # fall back to the kernel's own boot-log line ("DMI: Lenovo YB1-X91F ...").
 # The destructive eMMC mode REQUIRES a positive match; without one nothing
@@ -215,18 +250,29 @@ fi
 # ---- locate the BOOT MEDIA by content first (it is the USB stick) ----
 # The YB1's Realtek card reader (0bda:07ef) presents inserted microSD cards as
 # USB mass storage (/dev/sdX), so a card looks exactly like another stick:
-# only the CONTENT (kernel + system.sfs) identifies the boot medium.
+# only the CONTENT (kernel + a system image: system.efs for Bliss 16 EROFS,
+# or system.sfs/system.img for classic Android-x86) identifies the boot medium.
 $BB mkdir -p /mnt/src
+# Storage hosts probe asynchronously (ata/sdhci/usb load just before us), so
+# /dev/sr0 can appear SECONDS after a one-shot scan has already given up -
+# QEMU showed init.orig's own retry loop winning exactly that race. Poll for
+# up to ~80s; on the Yoga Book the CD-ROM/USB stick appears within seconds.
 SRCDEV=""
-for dev in /dev/sr0 /dev/sd[a-z] /dev/sd[a-z][0-9] /dev/mmcblk[0-9] /dev/mmcblk[0-9]p[0-9]; do
-    [ -b "$dev" ] || continue
-    if $BB mount -o ro "$dev" /mnt/src 2>/dev/null; then
-        if [ -f /mnt/src/kernel ] && { [ -f /mnt/src/system.sfs ] || [ -f /mnt/src/system.img ]; }; then
-            SRCDEV="$dev"
-            break
+tries=0
+while [ -z "$SRCDEV" ] && [ "$tries" -lt 40 ]; do
+    for dev in /dev/sr[0-9] /dev/sd[a-z] /dev/sd[a-z][0-9] /dev/mmcblk[0-9] /dev/mmcblk[0-9]p[0-9]; do
+        [ -b "$dev" ] || continue
+        if $BB mount -o ro "$dev" /mnt/src 2>/dev/null; then
+            if [ -f /mnt/src/kernel ] && { [ -f /mnt/src/system.efs ] || [ -f /mnt/src/system.sfs ] || [ -f /mnt/src/system.img ]; }; then
+                SRCDEV="$dev"
+                break
+            fi
+            $BB umount /mnt/src 2>/dev/null
         fi
-        $BB umount /mnt/src 2>/dev/null
-    fi
+    done
+    if [ -n "$SRCDEV" ]; then break; fi
+    tries=$((tries+1))
+    $BB sleep 2
 done
 [ -n "$SRCDEV" ] || { echo "[YB] cannot find boot media"; exit 1; }
 # whole-disk path of the boot medium (strip ONLY the partition suffix:
@@ -243,18 +289,29 @@ esac
 echo "[YB] boot media: $SRCDEV (disk $SRCDISK)"
 
 # ---- pick the install target: ANY removable disk that is not the stick ----
-$BB sleep 2   # let freshly probed hosts settle
+# Same late-probe concern as the boot media scan: the eMMC host (sdhci-acpi)
+# registers its block device asynchronously. Keep rescanning while we see
+# NOTHING (up to ~40s); a count >= 2 is a real ambiguity (e.g. an SD card
+# inserted during the eMMC install) and must abort right away.
 TGT=""
 COUNT=0
-for d in /sys/block/*; do
-    b="${d##*/}"
-    case "$b" in
-        loop*|ram*|sr*|md*|zram*|dm-*|nbd*|*rpmb*|mmcblk*boot*) continue ;;
-    esac
-    [ "$($BB cat "$d/removable" 2>/dev/null)" = "$WANT_REMOVABLE" ] || continue
-    [ "/dev/$b" = "$SRCDISK" ] && continue
-    TGT="/dev/$b"
-    COUNT=$((COUNT+1))
+tries=0
+while [ "$tries" -lt 20 ]; do
+    TGT=""
+    COUNT=0
+    for d in /sys/block/*; do
+        b="${d##*/}"
+        case "$b" in
+            loop*|ram*|sr*|md*|zram*|dm-*|nbd*|*rpmb*|mmcblk*boot*) continue ;;
+        esac
+        [ "$($BB cat "$d/removable" 2>/dev/null)" = "$WANT_REMOVABLE" ] || continue
+        [ "/dev/$b" = "$SRCDISK" ] && continue
+        TGT="/dev/$b"
+        COUNT=$((COUNT+1))
+    done
+    if [ "$COUNT" -ge 1 ]; then break; fi
+    tries=$((tries+1))
+    $BB sleep 2
 done
 if [ "$TARGET" = "emmc" ]; then
     [ "$COUNT" = "1" ] && [ -n "$TGT" ] || { echo "[YB] eMMC not uniquely identified (count=$COUNT) - remove any inserted SD card / extra USB disks and reboot"; exit 0; }
@@ -315,12 +372,21 @@ $BB mkdosfs -n ANDROID "$P1"
 $BB mke2fs -F -L DATA "$P2"
 
 # ---- stage files ----
-$BB mkdir -p /mnt/efi
+$BB mkdir -p /mnt/efi /mnt/data
 $BB mount "$P1" /mnt/efi || { echo "[YB] ESP mount failed"; exit 1; }
+# kernel + initrd are small and live on the ESP; the multi-GB system image
+# cannot fit a 256M ESP, so it is staged on the DATA partition (classic
+# Android-x86 layout: the boot entries pass SRC=/and-yb so init.orig finds
+# $SRC/system.efs there; Bliss 16 ships EROFS, erofs.ko is in the initrd)
 $BB cp /mnt/src/kernel /mnt/src/initrd.img /mnt/efi/
-for f in /mnt/src/ramdisk.img /mnt/src/system.sfs /mnt/src/system.img; do
-    [ -f "$f" ] && $BB cp "$f" /mnt/efi/
+$BB mount "$P2" /mnt/data || { echo "[YB] DATA mount failed"; exit 1; }
+$BB mkdir -p /mnt/data/and-yb
+for f in /mnt/src/ramdisk.img /mnt/src/system.efs /mnt/src/system.sfs /mnt/src/system.img; do
+    [ -f "$f" ] && $BB cp "$f" /mnt/data/and-yb/
 done
+# integrity gates: never report COMPLETE unless the essentials really landed
+[ -f /mnt/efi/kernel ] && [ -f /mnt/efi/initrd.img ] || { echo "[YB] kernel/initrd copy failed"; exit 1; }
+[ -f /mnt/data/and-yb/system.efs ] || [ -f /mnt/data/and-yb/system.sfs ] || [ -f /mnt/data/and-yb/system.img ] || { echo "[YB] system image copy failed"; exit 1; }
 
 # source dir is 'efi/boot' (lowercase) on the ISO — match any case
 ESPBOOT=""
@@ -337,17 +403,17 @@ set timeout=1
 set default=0
 menuentry "Android (Bass OS 16.9.7) - installed on eMMC" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/ DATA=$P2
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb DATA=$P2
     initrd /initrd.img
 }
 menuentry "Android - installed on eMMC, SAFE GRAPHICS (try this if boot panics/hangs)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/ DATA=$P2 nomodeset
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb DATA=$P2 nomodeset
     initrd /initrd.img
 }
 menuentry "Reinstall to SD card (keeps this eMMC install)" {
     search --no-floppy --file /kernel --set=root
-    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/ YB_TARGET=sd
+    linux /kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive SRC=/and-yb YB_TARGET=sd
     initrd /initrd.img
 }
 GRUB
@@ -361,6 +427,7 @@ $BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/android.cfg
 $BB mkdir -p /mnt/efi/EFI/BOOT/grub 2>/dev/null || true
 $BB cp /mnt/efi/EFI/BOOT/grub.cfg /mnt/efi/EFI/BOOT/grub/grub.cfg 2>/dev/null || true
 $BB umount /mnt/efi
+$BB umount /mnt/data 2>/dev/null
 
 $BB sync
 if [ "$TARGET" = "emmc" ]; then
@@ -397,14 +464,23 @@ $BB mount -t devtmpfs devtmpfs /dev 2>/dev/null
 # and nothing else in this initrd loads them: without this, neither the
 # installer nor Android's init ever see any disk.
 echo "[YB] loading storage/SD/HID modules..."
-# also: sd/sr (disk driver may be =m), ATA/NVMe hosts (QEMU/other boxes), and
-# filesystems the installer itself needs to mount the ISO content with
-for m in usb-storage uas mmc_block sdhci sdhci-pci sdhci-acpi usbhid hid-generic hid \
-         rtsx_usb rtsx_usb_sdmmc rtsx_pci rtsx_pci_sdmmc \
-         sd_mod sr_mod ata_piix ahci nvme virtio_blk virtio_pci \
-         isofs udf vfat nls_cp437 nls_ascii ext4; do
-    $BB modprobe "$m" 2>/dev/null || true
-done
+# busybox-yb's modprobe silently no-ops (rc=0, no insmod reaches the kernel,
+# verified in QEMU) - load by explicit path in dependency order instead.
+# loadorder is generated at build time from modules.dep (deps first).
+# Fallback for fat-initrd builds (YB_SLIM_INITRD=0): name-based modprobe loop.
+KREL=$($BB uname -r)
+if [ -s "/lib/modules/$KREL/loadorder" ]; then
+    for m in $($BB cat "/lib/modules/$KREL/loadorder"); do
+        $BB insmod "/lib/modules/$KREL/$m" 2>/dev/null || true
+    done
+else
+    for m in usb-storage uas mmc_block sdhci sdhci-pci sdhci-acpi usbhid hid-generic hid \
+             rtsx_usb rtsx_usb_sdmmc rtsx_pci rtsx_pci_sdmmc \
+             sd_mod sr_mod ata_piix ahci nvme virtio_blk virtio_pci \
+             isofs udf vfat fat nls_cp437 nls_ascii nls_base nls_iso8859-1 erofs ext4; do
+        $BB modprobe "$m" 2>/dev/null || true
+    done
+fi
 $BB sleep 3
 if ! $BB grep -qE 'YB_INSTALL=0|DATA=' /proc/cmdline 2>/dev/null; then
     echo "[YB] auto-installer starting (pass YB_INSTALL=0 to skip)..."
