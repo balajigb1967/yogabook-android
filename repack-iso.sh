@@ -67,6 +67,59 @@ if find "$WORK/initrd/lib/modules" -name '*.ko.zst' | grep -q .; then
     depmod -b "$WORK/initrd" "$KREL"
 fi
 
+# ---- SLIM INITRD ----
+# The initramfs must stay small: a ~176MB initrd (the full 7.2.0 module tree)
+# takes ~a minute to load+unpack and is the prime suspect for the firmware's
+# GRUB failing to load it on the Yoga Book (field: kernel panic right after
+# GRUB). The boot path only needs storage/SD/HID/filesystem modules - exactly
+# the modprobe list the shim uses - so keep only those (resolved WITH their
+# dependencies from the full tree via kmod) and let the FULL tree ship in
+# ramdisk.img for the installed/live Android system.
+# YB_SLIM_INITRD=0 restores the fat initrd (debugging only).
+if [[ "${YB_SLIM_INITRD:-1}" = "1" ]]; then
+    MODDIR="$WORK/initrd/lib/modules/$KREL"
+    echo ">>> Pruning initrd modules to the boot-critical set"
+    mkdir -p "$WORK/mroot/lib/modules"
+    mv "$MODDIR" "$WORK/mroot/lib/modules/$KREL"
+    mkdir -p "$MODDIR"
+    for meta in modules.builtin modules.builtin.modinfo modules.order; do
+        if [ -f "$WORK/mroot/lib/modules/$KREL/$meta" ]; then
+            cp "$WORK/mroot/lib/modules/$KREL/$meta" "$MODDIR/"
+        fi
+    done
+    KEEPLIST="usb-storage uas usbhid hid-generic hid usbcore usb-common \
+mmc_block mmc_core sdhci sdhci-pci sdhci-acpi sdhci-pltfm \
+rtsx_usb rtsx_usb_sdmmc rtsx_pci rtsx_pci_sdmmc \
+sd_mod sr_mod cdrom scsi_mod ata_piix ahci libata nvme nvme_core \
+virtio_blk virtio_pci virtio virtio_ring \
+xhci-pci xhci-hcd ehci-pci ehci-hcd uhci-hcd \
+hid-multitouch i2c-hid intel-lpss intel-lpss-pci intel-lpss-acpi \
+isofs udf nls_cp437 nls_ascii nls_base vfat fat"
+    for name in $KEEPLIST; do
+        modprobe -d "$WORK/mroot" -S "$KREL" --show-depends "$name" 2>/dev/null |
+        while IFS= read -r line; do
+            case "$line" in
+                insmod\ *)
+                    f="${line#insmod }"; f="${f%% *}"
+                    rel="${f##*/lib/modules/$KREL/}"
+                    if [ "$rel" != "$f" ]; then
+                        dst="$MODDIR/$rel"
+                        if [ ! -f "$dst" ]; then mkdir -p "$(dirname "$dst")"; cp "$f" "$dst"; fi
+                    fi
+                    ;;
+            esac
+        done || true
+    done
+    rm -rf "$WORK/mroot"
+    [ -d "$MODDIR" ] || mkdir -p "$MODDIR"
+    find "$MODDIR" -type d -empty -delete 2>/dev/null || true
+    depmod -b "$WORK/initrd" "$KREL"
+    echo "    slim initrd modules: $(find "$MODDIR" -name '*.ko' | wc -l) .ko files, $(du -sh "$MODDIR" | cut -f1)"
+    for name in usb-storage mmc_block sdhci rtsx_usb usbhid sr_mod isofs xhci-pci; do
+        grep -aq "$name" "$MODDIR/modules.dep" || echo "    WARN: $name not in slim modules.dep"
+    done
+fi
+
 if [[ -n "$ASSETS" && -f "$ASSETS/busybox-yb" ]]; then
     echo ">>> Installing static busybox for the installer"
     # NAME MATTERS: busybox dispatches applets by argv[0] basename and only
