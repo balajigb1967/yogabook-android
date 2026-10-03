@@ -1,0 +1,26 @@
+#!/sbin/sh
+OUTFD=$2
+ZIPFILE=$3
+
+ui_print() {
+  echo "$1" >&$OUTFD
+}
+
+ui_print "****************************************"
+ui_print "*   Lenovo Yoga Book Driver Module     *"
+ui_print "****************************************"
+
+MODPATH="/data/adb/modules/yogabook-drivers"
+mkdir -p "$MODPATH"
+unzip -o "$ZIPFILE" -d "$MODPATH" >/dev/null 2>&1
+
+chmod 0755 "$MODPATH/service.sh" 2>/dev/null || true
+chmod 0755 "$MODPATH/post-fs-data.sh" 2>/dev/null || true
+[ -d "$MODPATH/system/bin" ] && chmod 0755 "$MODPATH/system/bin/"* 2>/dev/null || true
+
+ui_print "- RT5677 SOF Topology deployed"
+ui_print "- ALSA UCM2 Audio profiles deployed"
+ui_print "- Broadcom BCM4356 Bluetooth deployed"
+ui_print "- Halo Keyboard daemon deployed"
+ui_print "- Installation complete! Please reboot."
+exit 0
