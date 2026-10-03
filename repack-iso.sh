@@ -189,11 +189,28 @@ if [ ! -e "$WORK/initrd/bin/sh" ]; then
     fi
 fi
 if [[ -n "$ASSETS" && -d "$ASSETS/firmware" ]]; then
-    echo ">>> Merging extra firmware (SOF topology etc.)"
+    echo ">>> Merging extra firmware (SOF topology, Broadcom etc.)"
     for p in lib/firmware vendor/firmware; do
         mkdir -p "$WORK/initrd/$p"
         cp -r "$ASSETS/firmware/." "$WORK/initrd/$p/" 2>/dev/null || true
     done
+fi
+
+if [[ -n "$ASSETS" && -f "$ASSETS/scripts/90-yogabook.sh" ]]; then
+    echo ">>> Installing Yoga Book initrd hardware hook"
+    mkdir -p "$WORK/initrd/scripts"
+    cp "$ASSETS/scripts/90-yogabook.sh" "$WORK/initrd/scripts/90-yogabook.sh"
+    chmod 0755 "$WORK/initrd/scripts/90-yogabook.sh"
+fi
+
+# Package driver bundle into the root of the ISO image ($WORK/iso/yogabook)
+mkdir -p "$WORK/iso/yogabook"
+if [[ -n "$ASSETS" ]]; then
+    [[ -d "$ASSETS/firmware" ]] && cp -r "$ASSETS/firmware" "$WORK/iso/yogabook/"
+    [[ -d "$ASSETS/ucm2" ]] && cp -r "$ASSETS/ucm2" "$WORK/iso/yogabook/"
+    [[ -d "$ASSETS/halo-keyboard" ]] && cp -r "$ASSETS/halo-keyboard" "$WORK/iso/yogabook/"
+    [[ -f "$ASSETS/scripts/init-yogabook.sh" ]] && cp "$ASSETS/scripts/init-yogabook.sh" "$WORK/iso/yogabook/init-yogabook.sh"
+    chmod -R 0755 "$WORK/iso/yogabook" 2>/dev/null || true
 fi
 
 # ---- the guarded installer (SD default, eMMC only on explicit opt-in) ----
@@ -538,6 +555,12 @@ for f in /mnt/src/ramdisk.img /mnt/src/system.efs /mnt/src/system.sfs /mnt/src/s
         echo "[YB] $BN copied successfully."
     fi
 done
+
+if [ -d /mnt/src/yogabook ]; then
+    echo "[YB] Installing Yoga Book hardware drivers & firmware..."
+    $BB mkdir -p /mnt/data/and-yb/yogabook
+    $BB cp -a /mnt/src/yogabook/. /mnt/data/and-yb/yogabook/
+fi
 
 # integrity gate for system image
 [ -f /mnt/data/and-yb/system.efs ] || [ -f /mnt/data/and-yb/system.sfs ] || [ -f /mnt/data/and-yb/system.img ] || {

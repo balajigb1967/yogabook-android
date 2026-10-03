@@ -1,0 +1,353 @@
+yogabook-camera (0.2.22) unstable; urgency=medium
+
+  * Negotiate the front Bayer caps from the raw FourCC exposed by AtomISP.
+  * Support the current BG10/SBGGR10 kernel contract and the previous
+    BA10/SGRBG10 fallback without silently selecting the wrong color phase.
+  * Fail closed when the running kernel exposes an unknown raw format.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Sun, 30 Aug 2026 16:30:00 +0200
+
+yogabook-camera (0.2.21) unstable; urgency=medium
+
+  * Skip live udev operations when configuring an offline image or container.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Fri, 28 Aug 2026 23:15:00 +0200
+
+yogabook-camera (0.2.20) unstable; urgency=medium
+
+  * Reissue the upstream sensor raw-format support from its validated source
+    commit, superseding the stale 0.2.19 release artifact.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Fri, 28 Aug 2026 20:13:35 +0200
+
+yogabook-camera (0.2.19) unstable; urgency=medium
+
+  * Support kernels that expose sensor-matched AtomISP raw formats without
+    the obsolete allow_raw_output module parameter.
+  * Capture full sensor transport frames and crop CSI padding in userspace.
+  * Consume the upstream OV2740 SGRBG10 format without changing Bayer phase.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Thu, 27 Aug 2026 19:08:00 +0200
+
+yogabook-camera (0.2.17) unstable; urgency=medium
+
+  * Gate idle resume on a fresh corrected frame to prevent black warmup video.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Tue, 25 Aug 2026 09:40:00 +0200
+
+yogabook-camera (0.2.16) unstable; urgency=medium
+
+  * Retain the last corrected frame across camera idle wakeups.
+  * Disable synthetic loopback timeout frames that appeared solid green.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Tue, 25 Aug 2026 09:36:00 +0200
+
+yogabook-camera (0.2.15) unstable; urgency=medium
+
+  * Defer keep_format until both loopback producer writers are active.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Tue, 25 Aug 2026 10:55:00 +0200
+
+yogabook-camera (0.2.14) unstable; urgency=medium
+
+  * Establish and lock YUYV loopback producer caps before desktop discovery.
+  * Return failure on pipeline errors so systemd retries recoverable races.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Tue, 25 Aug 2026 10:35:00 +0200
+
+yogabook-camera (0.2.13) unstable; urgency=medium
+
+  * Suspend raw capture and image processing while no camera client is open.
+  * Stop camera processing at 85 C and require 75 C before resuming.
+  * Bound camera CPU, memory, task count and restart rate under systemd.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 22:20:00 +0200
+
+yogabook-camera (0.2.12) unstable; urgency=medium
+
+  * Clarify the kernel/runtime contract and camera validation boundary.
+  * Document kernel-source provenance and retain required copyright notices.
+  * Centralize controller state reads and make its wait policy explicit.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 23:20:00 +0200
+
+yogabook-camera (0.2.11) unstable; urgency=medium
+
+  * Present the browser endpoints simply as Front Camera and Rear Camera.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 21:55:00 +0200
+
+yogabook-camera (0.2.10) unstable; urgency=medium
+
+  * Detect the newly opened endpoint while Chromium temporarily holds both the
+    old and new cameras during an in-call handoff.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 21:48:00 +0200
+
+yogabook-camera (0.2.9) unstable; urgency=medium
+
+  * Pin the browser output to the loopbacks' retained Rec.709, sRGB-transfer,
+    BT.601-encoding, limited-range colorimetry tuple across service restarts.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 21:32:00 +0200
+
+yogabook-camera (0.2.8) unstable; urgency=medium
+
+  * Restore the persisted previous selection when an in-place sensor handoff
+    fails and rolls back.
+  * Tear down capture, processing and browser-output pipelines on every startup
+    failure path.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 21:18:00 +0200
+
+yogabook-camera (0.2.7) unstable; urgency=medium
+
+  * Wait for the inter-video sink's first processed frame before opening the
+    stable browser output pipeline.
+  * Defer loopback format locking and systemd readiness until both output
+    writers are active.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 21:02:00 +0200
+
+yogabook-camera (0.2.6) unstable; urgency=medium
+
+  * Establish the inter-video sink channel before starting its browser source.
+  * Scale the inter-video timeout frame to the invariant browser resolution.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 20:48:00 +0200
+
+yogabook-camera (0.2.5) unstable; urgency=medium
+
+  * Replace the manual appsink/appsrc bridge with GStreamer's inter-video
+    transport so Chromium capture opens cannot invalidate V4L2 allocation.
+  * Clear stale loopback format locks before every service start to recover
+    automatically after a processor failure before systemd readiness.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 20:35:00 +0200
+
+yogabook-camera (0.2.4) unstable; urgency=medium
+
+  * Keep the invariant 1280x720 YUYV browser caps immutable after the first
+    frame so a sensor switch cannot renegotiate a locked Chromium endpoint.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 20:22:00 +0200
+
+yogabook-camera (0.2.3) unstable; urgency=medium
+
+  * Propagate the processor's exact negotiated YUYV caps to the independent
+    browser-output appsrc before its first frame.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 20:10:00 +0200
+
+yogabook-camera (0.2.2) unstable; urgency=medium
+
+  * Keep the two V4L2 writers in an independent output pipeline while resetting
+    sensor-specific Bayer processing during a front/rear format handoff.
+  * Restore fresh processed frames after switching between the sensors'
+    different native dimensions without dropping either browser endpoint.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 19:55:00 +0200
+
+yogabook-camera (0.2.1) unstable; urgency=medium
+
+  * Treat the bounded udev-settle timeout as advisory after validating both
+    loopback nodes directly, so unrelated boot uevents cannot block startup.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 19:42:00 +0200
+
+yogabook-camera (0.2.0) unstable; urgency=medium
+
+  * Expose separate Yoga Book Front Camera and Yoga Book Rear Camera devices.
+  * Switch the single AtomISP pipeline automatically when a browser keeps one
+    of the two endpoints open, without restarting the browser-facing stream.
+  * Keep manual front/rear selection as a diagnostic in-place handoff.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 19:05:00 +0200
+
+yogabook-camera (0.1.22) unstable; urgency=medium
+
+  * Correct the rear green cast with a bounded same-frame RGB comparison.
+  * Raise rear gamma to expose indoor detail without clipping the measured
+    neutral wall reference.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 18:10:00 +0200
+
+yogabook-camera (0.1.21) unstable; urgency=medium
+
+  * Match the rear profile to the OV8858 per-channel digital-gain control
+    restored by the Yoga Book kernel driver.
+  * Start rear preview and full-resolution still capture at the physically
+    measured indoor exposure instead of resetting the sensor to a black frame.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 17:43:42 +0200
+
+yogabook-camera (0.1.20) unstable; urgency=medium
+
+  * Restore whole-frame non-clipped white-balance statistics after physical
+    testing showed neutral-only sampling was sparse and drove skin orange.
+  * Keep the rejected quadratic color surface disabled while retaining mild
+    sharpening and all proven transport and service behavior.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 15:46:00 +0200
+
+yogabook-camera (0.1.19) unstable; urgency=medium
+
+  * Remove the rejected quadratic residual color-gain surface after physical
+    testing showed orange skin and inconsistent wall color.
+  * Retain neutral-only automatic white balance, mild sharpening and all
+    proven camera transport and service behavior.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 15:40:00 +0200
+
+yogabook-camera (0.1.18) unstable; urgency=medium
+
+  * Restrict automatic white-balance statistics to low-chroma neutral
+    candidates so skin and saturated objects cannot cancel spatial shading.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 15:32:00 +0200
+
+yogabook-camera (0.1.17) unstable; urgency=medium
+
+  * Restore the two-buffer loopback limit required by GStreamer consumers;
+    Chromium stability is provided by the format lock rather than extra
+    buffers.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 15:24:00 +0200
+
+yogabook-camera (0.1.16) unstable; urgency=medium
+
+  * Unlock the retained v4l2loopback format before stopping the processor so
+    capture-only state cannot prevent the next writer from opening.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 15:18:00 +0200
+
+yogabook-camera (0.1.15) unstable; urgency=medium
+
+  * Add a bounded two-dimensional OV2740 residual color-shading correction
+    fitted from neutral wall samples against the warm-neutral reference.
+  * Add conservative post-denoise edge enhancement before 720p output.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 15:10:00 +0200
+
+yogabook-camera (0.1.14) unstable; urgency=medium
+
+  * Restore capture-only loopback advertisement required for Chromium device
+    enumeration while retaining four buffers and the format lock.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 14:44:00 +0200
+
+yogabook-camera (0.1.13) unstable; urgency=medium
+
+  * Keep active camera services running across package upgrades by using the
+    explicit debhelper no-stop-on-upgrade behavior.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 14:39:00 +0200
+
+yogabook-camera (0.1.12) unstable; urgency=medium
+
+  * Keep both loopback capture and output capabilities available so the
+    processor can restart while a browser still holds the camera open.
+  * Raise the loopback buffer limit to four for Chromium capture clients.
+  * Prepare package upgrades for restart-safe loopback capabilities.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 14:36:00 +0200
+
+yogabook-camera (0.1.11) unstable; urgency=medium
+
+  * Lock the established loopback format before declaring readiness so Chrome
+    cannot stall the early producer while opening the corrected camera.
+  * Sustain the nominal frame rate during bounded producer interruptions.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 14:31:00 +0200
+
+yogabook-camera (0.1.10) unstable; urgency=medium
+
+  * Remove stale desktop ACLs from the private AtomISP graph when upgrading
+    from a package that exposed the raw camera nodes.
+  * Wait for a changed, fully ready service process when switching cameras.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 14:15:00 +0200
+
+yogabook-camera (0.1.9) unstable; urgency=medium
+
+  * Run the processor before the display manager with supplementary video and
+    render groups, reporting readiness after the first corrected frame.
+  * Remove desktop uaccess ACLs from the private AtomISP graph while retaining
+    normal browser access to the corrected loopback endpoint.
+  * Migrate the camera controller and suspend integration from the vulnerable
+    per-user startup race to the early system service.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 14:10:00 +0200
+
+yogabook-camera (0.1.8) unstable; urgency=medium
+
+  * Retry the bounded V4L2 device-release race during preview-to-still and
+    still-to-preview input switching without masking other failures.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 13:57:00 +0200
+
+yogabook-camera (0.1.7) unstable; urgency=medium
+
+  * Accept the media controller's I2C bus suffix on single-token sensor
+    entities while retaining exact matching for the Atom ISP subdevice.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 13:48:00 +0200
+
+yogabook-camera (0.1.6) unstable; urgency=medium
+
+  * Set AtomISP Still capture run mode before every raw format negotiation so
+    camera startup no longer depends on stale state from an earlier process.
+  * Keep the raw gate off during driver probe and enable it only from the
+    DMI-gated preparation service after waiting for late camera nodes.
+  * Match media entity names exactly when resolving the Atom ISP subdevice.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 13:45:00 +0200
+
+yogabook-camera (0.1.5) unstable; urgency=medium
+
+  * Quiesce active per-user camera services before system sleep and restore
+    only those instances after resume so AtomISP can suspend.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 13:15:00 +0200
+
+yogabook-camera (0.1.4) unstable; urgency=medium
+
+  * Acquire full-resolution rear frames as one-shot AtomISP streams, moving
+    the WV517S lens only while the physical capture node is idle.
+  * Replace per-row GStreamer writes with one bounded Bayer stride copy.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 13:25:00 +0200
+
+yogabook-camera (0.1.3) unstable; urgency=medium
+
+  * Disconnect physical-source EOS before pausing AtomISP for a rear still.
+  * Fully release and reconstruct the physical capture pipeline while keeping
+    the browser-facing output pipeline and its open loopback handle alive.
+  * Report V4L2 command failures with their original diagnostic text.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 12:49:00 +0200
+
+yogabook-camera (0.1.2) unstable; urgency=medium
+
+  * Keep the browser-facing loopback producer open during rear still capture.
+  * Route still requests through the persistent service to prevent browsers
+    from racing for the raw AtomISP node.
+  * Preserve front or rear preview selection after a bounded still request.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 12:38:00 +0200
+
+yogabook-camera (0.1.1) unstable; urgency=medium
+
+  * Fix automatic front/rear selection in the persistent user service.
+  * Add a full-resolution rear JPEG path with bounded contrast autofocus.
+  * Validate configuration, runtime selection and extracted package payloads.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 12:28:00 +0200
+
+yogabook-camera (0.1.0) unstable; urgency=medium
+
+  * Initial experimental raw Bayer userspace ISP package.
+  * Support OV2740 front and OV8858 rear sensor selection.
+  * Add adaptive tone, white balance, denoising and color-shading correction.
+
+ -- Yoga Book Linux Project <noreply@github.com>  Mon, 24 Aug 2026 11:15:00 +0200

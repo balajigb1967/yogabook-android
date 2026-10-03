@@ -1,0 +1,34 @@
+[Unit]
+Description=Yoga Book raw camera image processor
+Requires=yogabook-camera-prepare.service
+After=yogabook-camera-prepare.service user-runtime-dir@1000.service
+Wants=user-runtime-dir@1000.service
+Before=display-manager.service
+StartLimitIntervalSec=60s
+StartLimitBurst=3
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=1000
+SupplementaryGroups=video render
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStartPre=-/usr/bin/v4l2-ctl -d /dev/video10 --set-ctrl=keep_format=0
+ExecStartPre=-/usr/bin/v4l2-ctl -d /dev/video11 --set-ctrl=keep_format=0
+ExecStart=/usr/libexec/yogabook-camera/yogabook_camera.py --camera=auto
+ExecStop=-/usr/bin/v4l2-ctl -d /dev/video10 --set-ctrl=keep_format=0
+ExecStop=-/usr/bin/v4l2-ctl -d /dev/video11 --set-ctrl=keep_format=0
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=60s
+TimeoutStopSec=20s
+Nice=5
+CPUWeight=20
+CPUQuota=175%
+MemoryHigh=256M
+MemoryMax=384M
+TasksMax=64
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

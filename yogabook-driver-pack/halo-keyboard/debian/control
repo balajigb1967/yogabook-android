@@ -1,0 +1,35 @@
+Source: halo-keyboard
+Section: utils
+Priority: optional
+Maintainer: Yoga Book maintainers <Yoga-Book@users.noreply.github.com>
+Build-Depends:
+ cmake,
+ debhelper-compat (= 13),
+ pkgconf,
+ systemd-dev,
+ udev,
+Standards-Version: 4.7.3
+Rules-Requires-Root: no
+Homepage: https://github.com/Yoga-Book/Halo-Keyboard
+Vcs-Browser: https://github.com/Yoga-Book/Halo-Keyboard
+Vcs-Git: https://github.com/Yoga-Book/Halo-Keyboard.git
+
+Package: halo-keyboard
+Architecture: any
+Depends:
+ libwacom-common,
+ systemd,
+ udev,
+ ${misc:Depends},
+ ${shlibs:Depends},
+Provides: touch-keyboard (= ${binary:Version})
+Conflicts: touch-keyboard
+Replaces: touch-keyboard
+Description: Lenovo Yoga Book Halo keyboard and pen input integration
+ Translates the Goodix touch surface in the Lenovo Yoga Book keyboard half into
+ virtual keyboard and internal touchpad devices, with optional DRV2604 haptic
+ feedback.
+ .
+ The package also installs narrowly matched udev, hardware-database and
+ libwacom entries, including dynamic display mapping for the YB1-X91L pen and
+ an independent boot-time brightness policy for the Halo keyboard backlight.

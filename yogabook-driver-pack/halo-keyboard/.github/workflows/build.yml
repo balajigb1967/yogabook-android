@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  debian-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential cmake debhelper devscripts lintian ninja-build pkgconf \
+            shellcheck systemd-dev
+      - name: Build and test
+        run: make test
+      - name: Static shell validation
+        run: |
+          shellcheck tests/*.sh debian/halo-keyboard.postinst \
+            debian/halo-keyboard.postrm debian/tests/smoke
+          git diff --check
+      - name: Sanitizer and warning-clean build
+        run: |
+          cmake -S . -B build-sanitize -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTING=ON \
+            -DHALO_KEYBOARD_ENABLE_SANITIZERS=ON \
+            -DHALO_KEYBOARD_WARNINGS_AS_ERRORS=ON
+          cmake --build build-sanitize --parallel
+          ctest --test-dir build-sanitize --output-on-failure
+      - name: Build Debian package
+        run: dpkg-buildpackage --build=binary --no-sign
+      - name: Lint Debian package
+        run: lintian --profile debian ../halo-keyboard_*.changes

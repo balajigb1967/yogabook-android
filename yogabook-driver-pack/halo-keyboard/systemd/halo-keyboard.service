@@ -1,0 +1,42 @@
+[Unit]
+Description=Lenovo Yoga Book Halo keyboard handler
+Documentation=man:halo-keyboard-handler(8)
+BindsTo=dev-halo_keyboard.device
+After=dev-halo_keyboard.device
+ConditionPathExists=/dev/halo_keyboard
+StartLimitIntervalSec=30s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# The Halo surface can request this service before udev has created the two
+# DRV2604 compatibility symlinks. Wait for the current udev queue so haptics
+# are available to the handler on a normal cold boot. Keep the wait optional:
+# keyboard and touchpad input must still start if an unrelated udev event
+# prevents the queue from settling before the timeout.
+ExecStartPre=-/usr/bin/udevadm settle --timeout=10
+ExecStart=/usr/sbin/halo-keyboard-handler --config-directory /etc/halo-keyboard -m 1.0 -D 12
+Restart=on-failure
+RestartSec=1s
+KillMode=control-group
+CPUQuota=100%
+MemoryMax=32M
+TasksMax=16
+NoNewPrivileges=true
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+PrivateTmp=true
+ProtectHome=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RemoveIPC=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native

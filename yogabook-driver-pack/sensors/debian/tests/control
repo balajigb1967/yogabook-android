@@ -1,0 +1,3 @@
+Tests: smoke
+Depends: @, libxml2-utils, systemd, udev
+Restrictions: superficial

@@ -1,0 +1,4 @@
+udev/61-yogabook-sensors.rules usr/lib/udev/rules.d
+udev/61-yogabook-sensors.hwdb usr/lib/udev/hwdb.d
+libexec/generate-thermald-config.sh usr/libexec/yogabook-sensors
+systemd/thermald.service.d/10-yogabook-policy.conf usr/lib/systemd/system/thermald.service.d

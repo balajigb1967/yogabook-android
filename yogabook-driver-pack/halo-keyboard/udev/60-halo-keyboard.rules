@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: BSD-3-Clause
+
+ACTION=="remove", GOTO="halo_keyboard_end"
+
+# Start the handler when the Goodix surface in the Halo keyboard half appears.
+SUBSYSTEM=="input", KERNEL=="event[0-9]*", ENV{HALO_KEYBOARD}=="1", SYMLINK+="halo_keyboard", TAG+="systemd", ENV{SYSTEMD_WANTS}+="halo-keyboard.service"
+
+# Stable names for the two DRV2604 haptic devices used by the handler.
+KERNEL=="event[0-9]*", SUBSYSTEM=="input", KERNELS=="i2c-DRV2604:00", SYMLINK+="right_vibrator"
+KERNEL=="event[0-9]*", SUBSYSTEM=="input", KERNELS=="i2c-DRV2604:01", SYMLINK+="left_vibrator"
+KERNEL=="event[0-9]*", SUBSYSTEM=="input", KERNELS=="i2c-drv2604l.0", SYMLINK+="right_vibrator"
+KERNEL=="event[0-9]*", SUBSYSTEM=="input", KERNELS=="i2c-drv2604l.1", SYMLINK+="left_vibrator"
+
+LABEL="halo_keyboard_end"

@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+# Stop and disable the pre-0.1.9 per-user service before replacing it with the
+# early system service. Ignore users without a running user manager.
+for runtime in /run/user/[0-9]*; do
+	[ -S "$runtime/bus" ] || continue
+	uid=${runtime##*/}
+	user=$(id -nu "$uid" 2>/dev/null) || continue
+	runuser --user "$user" -- \
+		env XDG_RUNTIME_DIR="$runtime" \
+		DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+		systemctl --user disable --now yogabook-camera.service >/dev/null 2>&1 || true
+done
+
+#DEBHELPER#

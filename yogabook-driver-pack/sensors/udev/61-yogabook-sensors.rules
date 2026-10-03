@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+ACTION!="add|change", GOTO="yogabook_sensors_end"
+SUBSYSTEM!="iio", GOTO="yogabook_sensors_end"
+KERNEL!="iio:device*", GOTO="yogabook_sensors_end"
+ATTR{[dmi/id]product_name}!="Lenovo YB1-X91L", GOTO="yogabook_sensors_end"
+
+# Assign the four physically identified accelerometers directly from their
+# platform ancestors. This deliberately avoids a custom hwdb-import key.
+KERNELS=="HID-SENSOR-200073.10.auto", ENV{ACCEL_LOCATION}="display", ENV{ACCEL_MOUNT_MATRIX}="1, 0, 0; 0, 1, 0; 0, 0, 1"
+KERNELS=="HID-SENSOR-200073.11.auto", ENV{ACCEL_LOCATION}="base", ENV{ACCEL_MOUNT_MATRIX}="0, 1, 0; -1, 0, 0; 0, 0, 1"
+KERNELS=="HID-SENSOR-200073.19.auto", ENV{ACCEL_LOCATION}="display", ENV{ACCEL_MOUNT_MATRIX}="1, 0, 0; 0, 1, 0; 0, 0, 1"
+KERNELS=="HID-SENSOR-200073.20.auto", ENV{ACCEL_LOCATION}="base", ENV{ACCEL_MOUNT_MATRIX}="0, 1, 0; -1, 0, 0; 0, 0, 1"
+
+LABEL="yogabook_sensors_end"

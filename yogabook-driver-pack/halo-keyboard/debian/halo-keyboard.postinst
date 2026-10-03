@@ -1,0 +1,57 @@
+#!/bin/sh
+# SPDX-License-Identifier: BSD-3-Clause
+
+set -e
+
+root=${DPKG_ROOT:-}
+
+update_input_database() {
+	if command -v systemd-hwdb >/dev/null 2>&1; then
+		if [ -n "$root" ]; then
+			systemd-hwdb --root="$root" update
+		else
+			systemd-hwdb update
+		fi
+	elif command -v udevadm >/dev/null 2>&1; then
+		[ -n "$root" ] || udevadm hwdb --update
+	fi
+
+	if [ -z "$root" ] && command -v udevadm >/dev/null 2>&1; then
+		udevadm control --reload-rules || true
+	fi
+}
+
+migrate_layout() {
+	new_dir=$root/etc/halo-keyboard
+	new_layout=$new_dir/layout.csv
+	old_layout=$root/etc/touch_keyboard/layout.csv
+
+	[ ! -e "$new_layout" ] && [ ! -L "$new_layout" ] || return 0
+
+	if [ -e "$old_layout" ]; then
+		resolved_old_layout=$(readlink -f "$old_layout" 2>/dev/null || true)
+		if [ -n "$resolved_old_layout" ] && [ -f "$resolved_old_layout" ]; then
+			install -m 0644 "$resolved_old_layout" "$new_layout"
+			return 0
+		fi
+	fi
+
+	ln -s layouts/YB1-X9x-pc105.csv "$new_layout"
+}
+
+case "$1" in
+	configure)
+		migrate_layout
+		update_input_database
+		;;
+	abort-upgrade|abort-remove|abort-deconfigure)
+		;;
+	*)
+		echo "postinst called with unknown argument '$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,10 @@
+# Keep the physical AtomISP graph private to the system camera processor.
+# The corrected v4l2loopback node does not match these rules and retains
+# normal seat/uaccess permissions for browsers and desktop applications.
+ACTION=="add|change", SUBSYSTEM=="video4linux", ATTR{name}=="ATOMISP video output", GROUP="video", MODE="0660", TAG-="uaccess"
+ACTION=="add|change", SUBSYSTEM=="video4linux", ATTR{name}=="ATOM ISP CSI2-port*", GROUP="video", MODE="0660", TAG-="uaccess"
+ACTION=="add|change", SUBSYSTEM=="video4linux", ATTR{name}=="Atom ISP", GROUP="video", MODE="0660", TAG-="uaccess"
+ACTION=="add|change", SUBSYSTEM=="video4linux", ATTR{name}=="ov2740 *", GROUP="video", MODE="0660", TAG-="uaccess"
+ACTION=="add|change", SUBSYSTEM=="video4linux", ATTR{name}=="ov8858 *", GROUP="video", MODE="0660", TAG-="uaccess"
+ACTION=="add|change", SUBSYSTEM=="video4linux", ATTR{name}=="wv517s *", GROUP="video", MODE="0660", TAG-="uaccess"
+ACTION=="add|change", SUBSYSTEM=="media", KERNELS=="0000:00:03.0", GROUP="video", MODE="0660", TAG-="uaccess"

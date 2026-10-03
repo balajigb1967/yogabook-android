@@ -1,0 +1,13 @@
+/.debhelper/
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/yogabook-sensors/
+/debian/yogabook-sensors.debhelper.log
+/debian/yogabook-sensors.substvars
+/*.build
+/*.buildinfo
+/*.changes
+/*.deb
+/*.dsc
+/*.tar.*

@@ -1,0 +1,12 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_test:
+	$(MAKE) test
+
+override_dh_installsystemd:
+	dh_installsystemd --no-stop-on-upgrade yogabook-camera.service
+	dh_installsystemd --no-stop-on-upgrade yogabook-camera-prepare.service
+	dh_installsystemd --no-start yogabook-camera-sleep.service

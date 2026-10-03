@@ -1,0 +1,3 @@
+# The service is activated by the Goodix input device through SYSTEMD_WANTS.
+# It must remain static so it is not started when the Halo surface is absent.
+halo-keyboard: systemd-service-file-missing-install-key [usr/lib/systemd/system/halo-keyboard.service]

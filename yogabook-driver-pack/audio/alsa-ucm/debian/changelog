@@ -1,0 +1,49 @@
+alsa-ucm-conf-yogabook (1.7) unstable; urgency=medium
+
+  * Add the cht-rt5677 card-name alias for legacy SST.
+
+ -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Wed, 02 Sep 2026 13:05:12 +0200
+
+alsa-ucm-conf-yogabook (1.6) unstable; urgency=medium
+
+  * Add the SOF card long-name lookup alias.
+
+ -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Thu, 20 Aug 2026 01:13:35 +0200
+
+alsa-ucm-conf-yogabook (1.5) unstable; urgency=medium
+
+  * Add SOF compatibility:
+    - Match the sanitized chtyogabook ALSA card ID.
+    - Skip legacy SST platform controls when they are not present.
+
+ -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Tue, 18 Aug 2026 19:49:16 +0200
+
+alsa-ucm-conf-yogabook (1.4) unstable; urgency=medium
+
+  * Fix cht-yogabook conf.d link
+
+ -- Yauhen Kharuzhy <jekhor@gmail.com>  Tue, 06 Feb 2024 00:24:00 +0200
+
+alsa-ucm-conf-yogabook (1.3) unstable; urgency=medium
+
+  * Update UCM configuration
+
+ -- Yauhen Kharuzhy <jekhor@gmail.com>  Sat, 13 Jan 2024 02:26:12 +0200
+
+alsa-ucm-conf-yogabook (1.2) unstable; urgency=medium
+
+  * Adjust ADC Boost and Volume level for DMIC1 usage
+
+ -- Yauhen Kharuzhy <jekhor@gmail.com>  Tue, 20 Sep 2022 16:00:57 +0300
+
+alsa-ucm-conf-yogabook (1.1) unstable; urgency=medium
+
+  * Copy Platform{Enable,Disable}Seq.conf from alsa-ucm-conf package to prevent incompatibility with new ALSA
+
+ -- Yauhen Kharuzhy <jekhor@gmail.com>  Fri, 25 Dec 2020 23:56:00 +0300
+
+alsa-ucm-conf-yogabook (1.0) unstable; urgency=medium
+
+  * Initial Release.
+
+ -- Yauhen Kharuzhy <jekhor@gmail.com>  Thu, 26 Nov 2020 01:48:41 +0300

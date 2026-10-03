@@ -1,0 +1,16 @@
+[Unit]
+Description=Restore a usable Lenovo Yoga Book Halo keyboard brightness
+Documentation=man:halo-keyboard-handler(8)
+ConditionPathExists=/sys/class/leds/ybwmi::kbd_backlight/brightness
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/halo-keyboard/ensure-backlight-minimum
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/sys/class/leds/ybwmi::kbd_backlight/brightness
+
+[Install]
+WantedBy=multi-user.target

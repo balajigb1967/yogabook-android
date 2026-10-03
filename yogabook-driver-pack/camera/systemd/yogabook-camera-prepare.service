@@ -1,0 +1,14 @@
+[Unit]
+Description=Prepare Yoga Book camera devices
+After=systemd-modules-load.service
+Before=display-manager.service
+ConditionPathExists=/sys/class/dmi/id/product_name
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/bin/grep -Eq YB1[-_]X91L /sys/class/dmi/id/product_name
+ExecStart=/usr/libexec/yogabook-camera/prepare-camera.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,60 @@
+yogabook-sensors (1.0.0-9) unstable; urgency=medium
+
+  * Replace the custom per-instance hwdb import with direct, hardware-scoped
+    udev assignments derived from current YB1-X91L physical evidence.
+  * Use Debian systemd helpers without direct systemctl maintainer calls.
+
+ -- Yoga Book maintainers <Yoga-Book@users.noreply.github.com>  Mon, 31 Aug 2026 23:35:00 +0200
+
+yogabook-sensors (1.0.0-8) unstable; urgency=medium
+
+  * Skip live systemd reloads when configuring an offline image or container.
+
+ -- Yoga Book maintainers <Yoga-Book@users.noreply.github.com>  Fri, 28 Aug 2026 23:15:00 +0200
+
+yogabook-sensors (1.0.0-7) unstable; urgency=medium
+
+  * Wait for late-probing charger and thermal sensors during boot.
+  * Give thermald bounded restart headroom if platform probing is delayed.
+
+ -- Yoga Book maintainers <Yoga-Book@users.noreply.github.com>  Tue, 25 Aug 2026 10:10:00 +0200
+
+yogabook-sensors (1.0.0-6) unstable; urgency=medium
+
+  * Bind thermald to intel_pstate when the CPU uses intel_cpufreq.
+
+ -- Yoga Book maintainers <Yoga-Book@users.noreply.github.com>  Tue, 25 Aug 2026 09:15:00 +0200
+
+yogabook-sensors (1.0.0-5) unstable; urgency=medium
+
+  * Generate a validated YB1-X91L thermald policy from live sensor paths.
+  * Throttle CPU and platform heat before the 90 C hardware critical limit.
+  * Reduce charging only at validated battery or charger thermal thresholds.
+
+ -- Yoga Book maintainers <Yoga-Book@users.noreply.github.com>  Tue, 25 Aug 2026 08:45:00 +0200
+
+yogabook-sensors (1.0.0-4) unstable; urgency=medium
+
+  * Align both display accelerometers with the physical landscape frame.
+
+ -- Yoga Book maintainers <Yoga-Book@users.noreply.github.com>  Sat, 22 Aug 2026 06:10:00 +0200
+
+yogabook-sensors (1.0.0-3) unstable; urgency=medium
+
+  * Expose the YB1-X91L SX9310 proximity threshold to iio-sensor-proxy.
+
+ -- Yoga Book maintainers <Yoga-Book@users.noreply.github.com>  Fri, 21 Aug 2026 06:10:00 +0200
+
+yogabook-sensors (1.0.0-2) unstable; urgency=medium
+
+  * Rotate both display accelerometers into the native landscape panel frame.
+
+ -- Yoga Book maintainers <Yoga-Book@users.noreply.github.com>  Fri, 21 Aug 2026 00:25:00 +0200
+
+yogabook-sensors (1.0.0-1) unstable; urgency=medium
+
+  * Package the physically identified YB1-X91L display and base accelerometers.
+  * Apply the base accelerometer mount matrix through a per-instance hwdb key.
+  * Keep sensor policy independent from input, audio, and kernel packages.
+
+ -- Yoga Book maintainers <Yoga-Book@users.noreply.github.com>  Thu, 20 Aug 2026 23:58:00 +0200

@@ -1,0 +1,25 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = configure ] && [ -S /run/udev/control ] && command -v udevadm >/dev/null; then
+	udevadm control --reload-rules || true
+	udevadm trigger --subsystem-match=video4linux --subsystem-match=media || true
+	udevadm settle --timeout=10 || true
+
+	# A udev tag change prevents new logind ACLs but does not remove an ACL
+	# left on an already-present node by an older package. Restrict cleanup to
+	# the YB1-X91L AtomISP PCI graph; keep the loopback node user-accessible.
+	if grep -Eq 'YB1[-_]X91L' /sys/class/dmi/id/product_name 2>/dev/null; then
+		for class_device in /sys/class/video4linux/* /sys/class/media/*; do
+			[ -e "$class_device" ] || continue
+			case $(readlink -f "$class_device") in
+				/sys/devices/pci0000:00/0000:00:03.0/*)
+					device=/dev/${class_device##*/}
+					[ ! -e "$device" ] || setfacl -b "$device"
+					;;
+			esac
+		done
+	fi
+fi
+
+#DEBHELPER#

@@ -1,0 +1,65 @@
+.TH HALO-KEYBOARD-HANDLER 8 "August 2026" "halo-keyboard 1.0.0" "System Administration"
+.SH NAME
+halo-keyboard-handler \- translate the Yoga Book Halo surface into keyboard and touchpad input
+.SH SYNOPSIS
+.B halo-keyboard-handler
+.RB [ \-h ]
+.RB [ \-d ]
+.RB [ \-m " magnitude" ]
+.RB [ \-D " duration-ms" ]
+.RB [ \-c " directory" ]
+.SH DESCRIPTION
+.B halo-keyboard-handler
+reads multitouch events from
+.BR /dev/halo_keyboard ,
+creates virtual keyboard and internal touchpad devices through uinput, and
+optionally sends force-feedback effects to the Yoga Book haptic actuators.
+.PP
+Configuration is read from
+.BR hardware.csv ,
+.BR touchpad.csv ,
+and
+.BR layout.csv
+in
+.BR /etc/halo-keyboard
+unless another directory is selected explicitly.
+.SH OPTIONS
+.TP
+.B \-h
+Print command help and exit.
+.TP
+.B \-d
+Enable debug logging. The option may be repeated.
+.TP
+.BI \-m " magnitude"
+Set haptic feedback magnitude. The packaged service uses 1.0.
+.TP
+.BI \-D " duration-ms"
+Set haptic feedback duration in milliseconds. The packaged service uses 12.
+.TP
+.BI \-c " directory"
+.TQ
+.BI \-\-config-directory " directory"
+Read all configuration files from
+.IR directory .
+.SH FILES
+.TP
+.B /etc/halo-keyboard/
+Hardware, touchpad, and keyboard layout configuration.
+.TP
+.B /usr/lib/udev/rules.d/60-halo-keyboard.rules
+Device aliases and service activation.
+.TP
+.B /usr/lib/udev/hwdb.d/61-halo-keyboard.hwdb
+Yoga Book device classification.
+.TP
+.B /usr/share/libwacom/wacom-yoga-book.tablet
+Metadata that identifies the YB1-X91L Wacom digitizer as integrated into the
+system so the desktop can map it to the built-in display.
+.TP
+.B /dev/halo_keyboard
+Stable alias for the Goodix input event device.
+.SH SEE ALSO
+.BR systemd.service (5),
+.BR udev (7),
+.BR systemd-hwdb (8)

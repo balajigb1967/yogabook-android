@@ -1,0 +1,31 @@
+Source: yogabook-camera
+Section: video
+Priority: optional
+Maintainer: Yoga Book Linux Project <noreply@github.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.7.2
+Homepage: https://github.com/Yoga-Book/Yoga-Book-Camera
+Rules-Requires-Root: no
+
+Package: yogabook-camera
+Architecture: all
+Depends:
+ ${misc:Depends},
+ acl,
+ frei0r-plugins,
+ gir1.2-gst-plugins-base-1.0,
+ gir1.2-gstreamer-1.0,
+ gstreamer1.0-gl,
+ gstreamer1.0-plugins-bad,
+ gstreamer1.0-plugins-base,
+ gstreamer1.0-plugins-good,
+ gstreamer1.0-tools,
+ python3,
+ python3-gi,
+ v4l-utils,
+ v4l2loopback-dkms,
+ v4l2loopback-utils
+Description: userspace camera ISP for the Lenovo Yoga Book YB1-X91L
+ Provides raw Bayer capture, demosaic, denoising, color correction, adaptive
+ exposure/white-balance policy and a browser-compatible V4L2 camera for the
+ front OV2740 and rear OV8858 sensors in the Lenovo Yoga Book YB1-X91L.

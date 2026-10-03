@@ -1,0 +1,12 @@
+config/cameras.json etc/yogabook-camera
+modprobe.d/yogabook-camera.conf etc/modprobe.d
+modules-load.d/yogabook-camera.conf etc/modules-load.d
+src/yogabook_camera.py usr/libexec/yogabook-camera
+src/yogabook_camera_capture.py usr/libexec/yogabook-camera
+src/yogabook_camera_control.py usr/bin
+systemd/yogabook-camera-prepare.service usr/lib/systemd/system
+systemd/yogabook-camera-sleep.service usr/lib/systemd/system
+systemd/yogabook-camera.service usr/lib/systemd/system
+tools/camera-sleep.sh usr/libexec/yogabook-camera
+tools/prepare-camera.sh usr/libexec/yogabook-camera
+udev/72-yogabook-camera-private.rules usr/lib/udev/rules.d

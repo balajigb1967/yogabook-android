@@ -1,0 +1,32 @@
+Source: yogabook-sensors
+Section: utils
+Priority: optional
+Maintainer: Yoga Book maintainers <Yoga-Book@users.noreply.github.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ libxml2-utils,
+ systemd,
+ udev,
+Standards-Version: 4.7.3
+Rules-Requires-Root: no
+Homepage: https://github.com/Yoga-Book/Yoga-Book-Sensors
+Vcs-Browser: https://github.com/Yoga-Book/Yoga-Book-Sensors
+Vcs-Git: https://github.com/Yoga-Book/Yoga-Book-Sensors.git
+
+Package: yogabook-sensors
+Architecture: all
+Depends:
+ kmod,
+ thermald,
+ udev,
+ ${misc:Depends},
+Recommends:
+ iio-sensor-proxy,
+Description: Lenovo Yoga Book YB1-X91L sensor and thermal integration
+ Identifies the display and base accelerometers exposed by both Yoga Book
+ sensor hubs, supplies their mount matrices for desktop automatic rotation,
+ and provides the SX9310 proximity threshold required by iio-sensor-proxy.
+ .
+ It also supplies a hardware-scoped thermald policy for CPU, platform, battery,
+ and charger temperature control. It does not contain keyboard, pen, audio,
+ firmware, camera, or kernel components.

@@ -1,0 +1,96 @@
+{
+  "front": {
+    "alsa_name": "OV2740",
+    "input": 0,
+    "sensor": "ov2740",
+    "width": 1920,
+    "height": 1080,
+    "capture_width": 1932,
+    "capture_height": 1092,
+    "bytes_per_line": 4096,
+    "bayer_format": "bggr10le",
+    "kernel_bayer_formats": {
+      "BG10": "bggr10le",
+      "BA10": "grbg10le"
+    },
+    "output_width": 1280,
+    "output_height": 720,
+    "sensor_controls": {
+      "exposure": 1768,
+      "analogue_gain": 1230,
+      "digital_gain": 1024,
+      "red_balance": 1024,
+      "blue_balance": 1024
+    },
+    "control_ranges": {
+      "exposure": [4, 1768],
+      "analogue_gain": [128, 1983],
+      "digital_gain": [1024, 4095]
+    },
+    "processing": {
+      "contrast": 1.15,
+      "saturation": 2.0,
+      "gamma": 1.6,
+      "rgb_red": 0.733,
+      "rgb_green": 0.42,
+      "rgb_blue": 0.669,
+      "denoise_spatial": 0.06,
+      "denoise_temporal": 0.10,
+      "target_luma": 0.55,
+      "target_red_green": 1.115,
+      "target_blue_green": 0.875
+    }
+  },
+  "rear": {
+    "alsa_name": "OV8858",
+    "input": 1,
+    "sensor": "ov8858",
+    "width": 1616,
+    "height": 1208,
+    "capture_width": 1632,
+    "capture_height": 1224,
+    "bytes_per_line": 3328,
+    "bayer_format": "bggr10le",
+    "kernel_bayer_formats": {
+      "BG10": "bggr10le"
+    },
+    "output_width": 1280,
+    "output_height": 720,
+    "sensor_controls": {
+      "exposure": 2464,
+      "analogue_gain": 2047,
+      "digital_gain": 4095
+    },
+    "control_ranges": {
+      "exposure": [4, 2468],
+      "analogue_gain": [0, 2047],
+      "digital_gain": [1024, 4095]
+    },
+    "still": {
+      "width": 3248,
+      "height": 2432,
+      "capture_width": 3264,
+      "capture_height": 2448,
+      "bytes_per_line": 6656,
+      "bayer_format": "bggr10le",
+      "jpeg_quality": 95,
+      "focus_settle_ms": 200,
+      "focus_positions": [64, 192, 320, 448, 576, 704, 832, 960],
+      "focus_fine_radius": 96,
+      "focus_fine_step": 24
+    },
+    "processing": {
+      "contrast": 1.0,
+      "saturation": 1.4,
+      "gamma": 2.0,
+      "rgb_red": 0.65,
+      "rgb_green": 0.5,
+      "rgb_blue": 0.6,
+      "denoise_spatial": 0.04,
+      "denoise_temporal": 0.06,
+      "target_luma": 0.55,
+      "target_red_green": 1.05,
+      "target_blue_green": 0.95
+    }
+  }
+}

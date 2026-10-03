@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Lenovo Yoga Book YB1-X91L Wacom digitizer integrated into the Halo base.
+
+[Device]
+Name=Wacom HID 169
+ModelName=WCOM0019
+DeviceMatch=i2c|056a|0169
+Class=ISDV4
+IntegratedIn=System
+
+[Features]
+Stylus=true
+Touch=false

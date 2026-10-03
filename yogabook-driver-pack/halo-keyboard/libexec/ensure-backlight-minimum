@@ -1,0 +1,34 @@
+#!/bin/sh
+# SPDX-License-Identifier: BSD-3-Clause
+
+set -eu
+
+led_directory=${1:-/sys/class/leds/ybwmi::kbd_backlight}
+brightness_file=$led_directory/brightness
+maximum_file=$led_directory/max_brightness
+
+[ -r "$brightness_file" ] || exit 0
+[ -r "$maximum_file" ] || exit 0
+
+brightness=$(cat "$brightness_file")
+maximum=$(cat "$maximum_file")
+
+case $brightness in
+	''|*[!0-9]*)
+		echo "invalid Halo backlight values: brightness=$brightness maximum=$maximum" >&2
+		exit 1
+		;;
+esac
+case $maximum in
+	''|*[!0-9]*)
+		echo "invalid Halo backlight values: brightness=$brightness maximum=$maximum" >&2
+		exit 1
+		;;
+esac
+
+[ "$maximum" -gt 0 ] || exit 0
+minimum=$(((maximum + 4) / 5))
+
+if [ "$brightness" -lt "$minimum" ]; then
+	printf '%s\n' "$minimum" >"$brightness_file"
+fi

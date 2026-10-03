@@ -1,0 +1,22 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Yoga Book Sensors
+Upstream-Contact: Yoga Book maintainers <Yoga-Book@users.noreply.github.com>
+Source: https://github.com/Yoga-Book/Yoga-Book-Sensors
+Files: *
+Copyright: 2026 Yoga Book contributors
+License: GPL-2.0-or-later
+
+Files: debian/*
+       tests/*
+       README.md
+Copyright: 2026 Yoga Book contributors
+License: GPL-2.0-or-later
+
+License: GPL-2.0-or-later
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
+ .
+ On Debian systems, the complete text of version 2 of the GNU General Public
+ License can be found in /usr/share/common-licenses/GPL-2.

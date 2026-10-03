@@ -40,7 +40,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential bc bison flex libelf-dev libssl-dev dwarves ccache \
             zlib1g-dev libcap-dev \
-            cpio lz4 xorriso isolinux syslinux-common \
+            cpio lz4 xorriso isolinux syslinux-common cmake \
             zstd xz-utils curl ca-certificates
           # isohybrid MBR path differs across distros; normalize it
           if [ -f /usr/lib/syslinux/modules/bios/isohdpfx.bin ]; then
@@ -93,18 +93,51 @@ jobs:
           restore-keys: |
             ccache-yb-
 
-      - name: Download installer assets (static busybox, SOF topology)
+      - name: Prepare Yoga Book driver assets (firmware, audio UCM2, halo keyboard)
         run: |
-          mkdir -p assets/firmware
+          mkdir -p assets/firmware/intel/sof-tplg assets/firmware/brcm assets/ucm2 assets/halo-keyboard/config assets/scripts
           # static busybox for the initrd installer (fdisk/mkfs/mount)
           curl -fL --retry 3 -o assets/busybox-yb \
             "https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox" \
             || echo "::warning::busybox fetch failed - auto-install will be disabled"
           [ -s assets/busybox-yb ] || rm -f assets/busybox-yb
-          # Yoga-Book org SOF topology for the RT5677 sound path
-          curl -fL --retry 3 -o assets/firmware/sof-cht-rt5677.tplg \
-            "https://github.com/Yoga-Book/Yoga-Book-Sound-Open-Firmware/releases/download/yogabook-topology-v1.0.1/sof-cht-rt5677.tplg" \
-            || echo "::warning::SOF topology fetch failed"
+
+          # 1. Yoga Book SOF topology for RT5677 sound
+          if [ ! -f assets/firmware/intel/sof-tplg/sof-cht-rt5677.tplg ]; then
+            curl -fL --retry 3 -o assets/firmware/intel/sof-tplg/sof-cht-rt5677.tplg \
+              "https://github.com/Yoga-Book/Yoga-Book-Sound-Open-Firmware/releases/download/yogabook-topology-v1.0.1/sof-cht-rt5677.tplg" \
+              || cp yogabook-driver-pack/audio/sof-firmware/sof-cht-rt5677.tplg assets/firmware/intel/sof-tplg/
+          fi
+
+          # 2. Broadcom BCM4356 Bluetooth firmware
+          if [ ! -f assets/firmware/brcm/BCM4356A2.hcd ]; then
+            curl -fL --retry 3 -o assets/firmware/brcm/BCM4356A2.hcd \
+              "https://raw.githubusercontent.com/armbian/firmware/master/brcm/BCM4356A2.hcd" \
+              || true
+          fi
+
+          # 3. ALSA UCM2 audio configurations
+          if [ -d yogabook-driver-pack/audio/alsa-ucm/ucm2 ]; then
+            cp -r yogabook-driver-pack/audio/alsa-ucm/ucm2/* assets/ucm2/
+          fi
+
+          # 4. Compile static Halo Keyboard daemon binary
+          echo ">>> Building static halo-keyboard-handler binary"
+          mkdir -p build-halo
+          cd build-halo
+          cmake ../yogabook-driver-pack/halo-keyboard -DCMAKE_BUILD_TYPE=Release
+          make halo-keyboard-handler || true
+          cd ..
+          find build-halo -name halo-keyboard-handler -type f -exec cp {} assets/halo-keyboard/halo-keyboard-handler \;
+          [ -f assets/halo-keyboard/halo-keyboard-handler ] && strip assets/halo-keyboard/halo-keyboard-handler || true
+          [ -f assets/halo-keyboard/halo-keyboard-handler ] && chmod +x assets/halo-keyboard/halo-keyboard-handler || true
+          cp -r yogabook-driver-pack/halo-keyboard/config/* assets/halo-keyboard/config/ 2>/dev/null || true
+          cp yogabook-driver-pack/halo-keyboard/config/layouts/YB1-X9x-pc104.csv assets/halo-keyboard/config/layout.csv 2>/dev/null || true
+
+          # 5. Copy startup scripts
+          cp scripts/90-yogabook.sh assets/scripts/90-yogabook.sh
+          cp scripts/init-yogabook.sh assets/scripts/init-yogabook.sh
+          chmod +x assets/scripts/*.sh
 
       - name: Build Yoga Book kernel
         if: ${{ github.event.inputs.kernel_type == 'custom' }}

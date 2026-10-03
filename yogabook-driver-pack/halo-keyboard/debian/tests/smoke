@@ -1,0 +1,43 @@
+#!/bin/sh
+set -eu
+
+halo-keyboard-handler -h
+test -x /usr/sbin/halo-keyboard-handler
+test -x /usr/libexec/halo-keyboard/ensure-backlight-minimum
+test -f /usr/lib/udev/rules.d/60-halo-keyboard.rules
+test -f /usr/lib/udev/hwdb.d/61-halo-keyboard.hwdb
+test -f /usr/share/libwacom/wacom-yoga-book.tablet
+test -f /usr/lib/systemd/system/halo-keyboard.service
+test -f /usr/lib/systemd/system/halo-keyboard-backlight.service
+test -f /etc/halo-keyboard/hardware.csv
+test -f /etc/halo-keyboard/touchpad.csv
+test -e /etc/halo-keyboard/layout.csv
+
+udevadm verify --no-style --no-summary /usr/lib/udev/rules.d/60-halo-keyboard.rules
+grep -Fxq 'ExecStart=/usr/libexec/halo-keyboard/ensure-backlight-minimum' \
+    /usr/lib/systemd/system/halo-keyboard-backlight.service
+
+x91l_match=$(systemd-hwdb query \
+    'evdev:name:Wacom HID 169 Pen:dmi:bvnLENOVO:pnLenovoYB1-X91L:' || true)
+if printf '%s\n' "$x91l_match" | grep -Fq 'LIBINPUT_CALIBRATION_MATRIX='; then
+    echo 'Wacom calibration must remain neutral for dynamic display mapping' >&2
+    exit 1
+fi
+
+x90_match=$(systemd-hwdb query \
+    'evdev:name:Wacom HID 169 Pen:dmi:bvnLENOVO:pnLenovoYB1-X90L:' || true)
+if printf '%s\n' "$x90_match" | grep -Fq 'LIBINPUT_CALIBRATION_MATRIX='; then
+    echo 'Wacom calibration unexpectedly matches YB1-X90L' >&2
+    exit 1
+fi
+
+display_match=$(systemd-hwdb query \
+    'evdev:name:HDP0001:00 2ABB:8102:dmi:bvnLENOVO:pnLenovoYB1-X91L:' || true)
+if printf '%s\n' "$display_match" | grep -Fq 'LIBINPUT_CALIBRATION_MATRIX='; then
+    echo 'Wacom calibration unexpectedly matches the display touchscreen' >&2
+    exit 1
+fi
+
+grep -Fxq 'DeviceMatch=i2c|056a|0169' \
+    /usr/share/libwacom/wacom-yoga-book.tablet
+grep -Fxq 'IntegratedIn=System' /usr/share/libwacom/wacom-yoga-book.tablet

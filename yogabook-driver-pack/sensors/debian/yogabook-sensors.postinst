@@ -1,0 +1,36 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+set -e
+
+root=${DPKG_ROOT:-}
+
+case "$1" in
+configure)
+	if command -v systemd-hwdb >/dev/null 2>&1; then
+		if [ -n "$root" ]; then
+			systemd-hwdb --root="$root" update
+		else
+			systemd-hwdb update
+		fi
+	elif command -v udevadm >/dev/null 2>&1; then
+		[ -n "$root" ] || udevadm hwdb --update
+	fi
+	if [ -z "$root" ] && command -v udevadm >/dev/null 2>&1; then
+		udevadm control --reload-rules || true
+	fi
+	if [ -z "$root" ] && [ -d /run/systemd/system ] && command -v deb-systemd-invoke >/dev/null 2>&1; then
+		deb-systemd-invoke restart thermald.service
+	fi
+	;;
+abort-upgrade|abort-remove|abort-deconfigure)
+	;;
+*)
+	echo "postinst called with unknown argument '$1'" >&2
+	exit 1
+	;;
+esac
+
+#DEBHELPER#
+
+exit 0

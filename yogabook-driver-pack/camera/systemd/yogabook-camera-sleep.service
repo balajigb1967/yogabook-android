@@ -1,0 +1,15 @@
+[Unit]
+Description=Quiesce Yoga Book camera across system sleep
+Before=sleep.target
+StopWhenUnneeded=yes
+ConditionPathExists=/sys/class/dmi/id/product_name
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecCondition=/usr/bin/grep -Eq YB1[-_]X91L /sys/class/dmi/id/product_name
+ExecStart=/usr/libexec/yogabook-camera/camera-sleep.sh pre
+ExecStop=/usr/libexec/yogabook-camera/camera-sleep.sh post
+
+[Install]
+WantedBy=sleep.target

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: BSD-3-Clause
+
+# Goodix touch surface in the Halo keyboard half. The physical device is
+# consumed exclusively by halo-keyboard-handler and replaced with uinput
+# keyboard and touchpad devices.
+evdev:name:Goodix Capacitive TouchScreen:dmi:bvnLENOVO*pnLenovoYB1-X9*
+ HALO_KEYBOARD=1
+ LIBINPUT_IGNORE_DEVICE=1
+
+# Android Yoga Book firmware identifies the platform differently.
+evdev:name:Goodix Capacitive TouchScreen:dmi:*pnCHERRYVIEWD1PLATFORM*:pvrYETI-11*:*
+ HALO_KEYBOARD=1
+ LIBINPUT_IGNORE_DEVICE=1
+
+evdev:name:Halo Keyboard Touchpad:dmi:bvnLENOVO*pnLenovoYB1-X9*
+ ID_INPUT_TOUCHPAD_INTEGRATION=internal
+
+evdev:name:Halo Keyboard Touchpad:dmi:*pnCHERRYVIEWD1PLATFORM*:pvrYETI-11*:*
+ ID_INPUT_TOUCHPAD_INTEGRATION=internal

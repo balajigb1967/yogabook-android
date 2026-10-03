@@ -1,0 +1,29 @@
+#!/bin/sh
+# SPDX-License-Identifier: BSD-3-Clause
+
+set -e
+
+root=${DPKG_ROOT:-}
+
+case "$1" in
+	remove|purge)
+		if command -v systemd-hwdb >/dev/null 2>&1; then
+			if [ -n "$root" ]; then
+				systemd-hwdb --root="$root" update
+			else
+				systemd-hwdb update
+			fi
+		elif command -v udevadm >/dev/null 2>&1; then
+			[ -n "$root" ] || udevadm hwdb --update
+		fi
+		if [ -z "$root" ] && command -v udevadm >/dev/null 2>&1; then
+			udevadm control --reload-rules || true
+		fi
+		;;
+	upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+# Semtech SX9310 capacitive proximity sensor. The near level matches the
+# channel 0 and combined-channel event threshold programmed by the driver.
+sensor:modalias:acpi:STH9310:*:dmi:bvnLENOVO*pnLenovoYB1-X91L:*
+ PROXIMITY_NEAR_LEVEL=96
