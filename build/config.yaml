@@ -1,0 +1,72 @@
+# Yoga Book YB1-91F Android Build Configuration
+
+build:
+  target: aosp_yogabook
+  variant: userdebug
+  kernel_version: 6.18
+  android_version: 13
+  api_level: 33
+
+repositories:
+  # Base AOSP
+  aosp:
+    url: https://android.googlesource.com/platform/manifest
+    branch: android-13.0.0_r41
+    
+  # Yoga Book specific
+  yogabook-kernel:
+    url: https://github.com/Yoga-Book/Yoga-Book-Linux-Kernel
+    branch: submission/yogabook-x91l-v2
+    path: kernel/lenovo/yogabook
+    
+  yogabook-sound:
+    url: https://github.com/Yoga-Book/Yoga-Book-Sound-Open-Firmware
+    branch: submission/cht-rt5677-topology2-ipc3-v1
+    path: vendor/lenovo/yogabook/sound-firmware
+    
+  yogabook-camera:
+    url: https://github.com/Yoga-Book/Yoga-Book-Camera
+    branch: main
+    path: vendor/lenovo/yogabook/camera
+    
+  yogabook-halokeyboard:
+    url: https://github.com/Yoga-Book/Halo-Keyboard
+    branch: main
+    path: vendor/lenovo/yogabook/halo-keyboard
+    
+  yogabook-sensors:
+    url: https://github.com/Yoga-Book/Yoga-Book-Sensors
+    branch: main
+    path: vendor/lenovo/yogabook/sensors
+    
+  yogabook-alsa-ucm:
+    url: https://github.com/Yoga-Book/Yoga-Book-ALSA-UCM-Config
+    branch: main
+    path: hardware/lenovo/yogabook/alsa-ucm
+    
+  yogabook-mutter:
+    url: https://github.com/Yoga-Book/mutter
+    branch: submission/work-item-4204-native-portrait-v2
+    path: external/yogabook-mutter
+
+build_steps:
+  1: "Initialize repo: repo init -u https://android.googlesource.com/platform/manifest -b android-13.0.0_r41"
+  2: "Copy local manifest: cp build/yogabook.xml .repo/local_manifests/"
+  3: "Sync sources: repo sync -j$(nproc)"
+  4: "Apply kernel patches: ./build/apply_kernel_patches.sh"
+  5: "Setup build environment: source build/envsetup.sh"
+  6: "Select lunch target: lunch aosp_yogabook-userdebug"
+  7: "Build: m -j$(nproc)"
+  8: "Create flashable image: ./build/create_flashable.sh"
+
+kernel_config:
+  base_config: "arch/arm64/configs/defconfig"
+  yogabook_fragment: "device/lenovo/yogabook/yogabook.fragment"
+  
+modules_to_build:
+  - "halo-keyboard"
+  - "sound-soc-rt5677"
+  - "camera-mbm"
+  - "sensors-mbm"
+  - "wifi-rtl8723bs"
+  - "bluetooth-rtl8723bs"

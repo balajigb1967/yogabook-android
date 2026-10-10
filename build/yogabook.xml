@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+    <!-- Yoga Book specific kernel -->
+    <remote name="yogabook" 
+            fetch="https://github.com/Yoga-Book" 
+            review="https://github.com/Yoga-Book" />
+    
+    <!-- Kernel repository -->
+    <project path="kernel/lenovo/yogabook" 
+             name="Yoga-Book-Linux-Kernel" 
+             remote="yogabook" 
+             revision="submission/yogabook-x91l-v2" />
+    
+    <!-- Sound firmware -->
+    <project path="vendor/lenovo/yogabook/sound-firmware" 
+             name="Yoga-Book-Sound-Open-Firmware" 
+             remote="yogabook" 
+             revision="submission/cht-rt5677-topology2-ipc3-v1" />
+    
+    <!-- Camera drivers -->
+    <project path="vendor/lenovo/yogabook/camera" 
+             name="Yoga-Book-Camera" 
+             remote="yogabook" 
+             revision="main" />
+    
+    <!-- Halo Keyboard -->
+    <project path="vendor/lenovo/yogabook/halo-keyboard" 
+             name="Halo-Keyboard" 
+             remote="yogabook" 
+             revision="main" />
+    
+    <!-- Sensors -->
+    <project path="vendor/lenovo/yogabook/sensors" 
+             name="Yoga-Book-Sensors" 
+             remote="yogabook" 
+             revision="main" />
+    
+    <!-- ALSA UCM Config -->
+    <project path="hardware/lenovo/yogabook/alsa-ucm" 
+             name="Yoga-Book-ALSA-UCM-Config" 
+             remote="yogabook" 
+             revision="main" />
+    
+    <!-- Mutter for native portrait -->
+    <project path="external/yogabook-mutter" 
+             name="mutter" 
+             remote="yogabook" 
+             revision="submission/work-item-4204-native-portrait-v2" />
+    
+    <!-- Ubuntu Autoinstall (reference) -->
+    <project path="vendor/lenovo/yogabook/ubuntu-autoinstall" 
+             name="Ubuntu-Autoinstall" 
+             remote="yogabook" 
+             revision="main" />
+</manifest>

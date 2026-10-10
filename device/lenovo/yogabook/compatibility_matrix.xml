@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<compatibility-matrix version="1.0" type="framework">
+    <!-- Kernel -->
+    <kernel version="4.4" />
+    <kernel version="4.9" />
+    <kernel version="4.14" />
+    <kernel version="4.19" />
+    <kernel version="5.4" />
+    <kernel version="6.18" />
+    
+    <!-- SELinux policy -->
+    <sepolicy>
+        <kernel-sepolicy-version>30</kernel-sepolicy-version>
+        <sepolicy-version>30</sepolicy-version>
+    </sepolicy>
+    
+    <!-- AVB versions -->
+    <avb>
+        <vbmeta-version>1.0</vbmeta-version>
+        <vbmeta-version>2.0</vbmeta-version>
+    </avb>
+    
+    <!-- HAL declarations -->
+    <hal format="hidl" optional="true" name="android.hardware.audio" version="6.0">
+        <version>6.0</version>
+        <interface name="IDeviceFactory" version="1.0" />
+    </hal>
+    
+    <hal format="hidl" optional="true" name="android.hardware.bluetooth" version="1.0">
+        <version>1.0</version>
+        <interface name="IBluetoothHci" version="1.0" />
+    </hal>
+    
+    <hal format="hidl" optional="true" name="android.hardware.camera" version="3.4">
+        <version>3.4</version>
+        <interface name="ICameraDevice" version="1.0" />
+        <interface name="ICameraDeviceCallback" version="1.0" />
+        <interface name="ICameraService" version="1.0" />
+    </hal>
+    
+    <!-- Yoga Book specific HALs -->
+    <hal format="hidl" optional="false" name="vendor.lenovo.hardware.halokeyboard" version="1.0">
+        <version>1.0</version>
+        <interface name="IHaloKeyboard" version="1.0" />
+    </hal>
+    
+    <hal format="hidl" optional="false" name="vendor.lenovo.hardware.sensors" version="1.0">
+        <version>1.0</version>
+        <interface name="ISensorHub" version="1.0" />
+    </hal>
+</compatibility-matrix>

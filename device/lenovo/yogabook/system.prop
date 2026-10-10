@@ -1,0 +1,47 @@
+# System properties for Yoga Book YB1-91F
+
+# RIL
+ro.telephony.default_network=9
+ro.telephony.default_cdma_sub=0
+ro.telephony.default_gsm_sub=1
+persist.radio.multisim.config=dsds
+
+# WiFi
+wifi.interface=wlan0
+wifi.supplicant_scan_interval=15
+
+# Bluetooth
+ro.bluetooth.hfp.ver=1.6
+ro.bluetooth.library_name=libbluetooth_qti.so
+
+# Audio
+ro.config.media_vol_steps=25
+ro.config.voicemail_num=*86
+
+# Display
+ro.sf.lcd_density=224
+debug.hwui.use_buffer_age=false
+
+# Keyboard
+ro.halokeyboard.enabled=true
+persist.sys.halokeyboard.layout=us
+
+# Sensors
+ro.sensor.accelerometer=mbm1250
+ro.sensor.gyroscope=mbm1250
+ro.sensor.magnetometer=mbm1250
+ro.sensor.als=mbm1250
+ro.sensor.proximity=mbm1250
+ro.sensor.hall=mbm1250
+
+# Power
+ro.config.low_ram=true
+ro.config.zram=true
+
+# Dalvik/ART heap settings
+dalvik.vm.heapstartsize=8m
+dalvik.vm.heapgrowthlimit=192m
+dalvik.vm.heapsize=512m
+dalvik.vm.heaptargetutilization=0.75
+dalvik.vm.heapminfree=512k
+dalvik.vm.heapmaxfree=8m
