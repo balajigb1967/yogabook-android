@@ -1,0 +1,8 @@
+[Unit]
+Description=Touch keyboard handler
+
+[Service]
+WorkingDirectory=/etc/touch_keyboard
+ExecStart=/usr/sbin/touch_keyboard_handler -m 1.0 -D 6
+Type=simple
+

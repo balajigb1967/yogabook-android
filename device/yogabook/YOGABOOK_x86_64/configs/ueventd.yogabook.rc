@@ -1,0 +1,8 @@
+# Yoga Book ueventd additions
+# uinput: needed by the Halo keyboard handler to create virtual devices
+/dev/uinput               0660   root     input
+# evdev nodes for the input HAL / handler
+/dev/input/event*         0660   root     input
+/dev/input/*              0640   root     input
+# force-feedback (DRV2604 haptics)
+/dev/input/by-path/*      0660   root     input

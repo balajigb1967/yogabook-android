@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Yoga Book local manifest for LineageOS 23.2 (Android 16).
+
+  Place in .repo/local_manifests/yogabook.xml (the build scripts do this
+  automatically from manifest/local_manifests/yogabook.xml).
+-->
+<manifest>
+
+  <remote name="gh"       fetch="https://github.com" />
+  <remote name="salsa"    fetch="https://salsa.debian.org" />
+  <remote name="goog"     fetch="https://android.googlesource.com" />
+
+  <!-- LineageOS 23.2 mainline generic x86 tree (device + deps) -->
+  <project name="LineageOS/android_device_mainline_generic" path="device/mainline/generic" remote="gh" revision="lineage-23.2" />
+  <project name="LineageOS/android_device_mainline_common"  path="device/mainline/common"  remote="gh" revision="lineage-23.2" />
+  <project name="LineageOS/android_external_tinyhal"        path="external/tinyhal"        remote="gh" revision="lineage-23.2" />
+  <project name="LineageOS/android_kernel_mainline_configs" path="kernel/mainline/configs" remote="gh" revision="lineage-23.2" />
+  <project name="LineageOS/android_prebuilts_bootmgr"       path="prebuilts/bootmgr"       remote="gh" revision="lineage-23.2" />
+
+  <!-- Kernels: Debian mainline source (primary, Yoga Book patches applied on top)
+       and android-mainline (referenced by the generic tree's default config). -->
+  <project name="kernel-team/linux" path="external/debian-linux" remote="salsa" revision="debian/latest" />
+  <project name="kernel/common"     path="kernel/mainline/android-mainline" remote="goog" revision="android-mainline" />
+
+  <!-- This repository (device overlay; build script rsyncs the local checkout over it) -->
+  <project name="balajigb1967/yogabook-android" path="device/yogabook" remote="gh" revision="main" />
+
+</manifest>

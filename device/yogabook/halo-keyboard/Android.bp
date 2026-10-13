@@ -1,0 +1,59 @@
+// Android build for the Yoga Book Halo keyboard handler.
+// Upstream: https://github.com/jekhor/chromiumos_touch_keyboard (BSD-style, see LICENSE.md)
+
+cc_binary {
+    name: "touch_keyboard_handler",
+    srcs: [
+        "src/main.cc",
+        "src/evdevsource.cc",
+        "src/fakekeyboard.cc",
+        "src/faketouchpad.cc",
+        "src/uinputdevice.cc",
+        "src/haptic/ff_driver.cc",
+        "src/haptic/touch_ff_manager.cc",
+        "src/statemachine/eventkey.cc",
+        "src/statemachine/slot.cc",
+        "src/statemachine/statemachine.cc",
+        "src/logging.cc",
+    ],
+    local_include_dirs: ["src"],
+    cflags: [
+        "-Wall",
+        "-Wno-unused-parameter",
+    ],
+    vendor: true,
+}
+
+// Configuration files: /vendor/etc/touch_keyboard/
+prebuilt_etc {
+    name: "touch_keyboard_hw.csv",
+    src: "config/touch-hw.csv",
+    sub_dir: "touch_keyboard",
+    filename: "touch-hw.csv",
+}
+
+prebuilt_etc {
+    name: "touch_keyboard_layout_pc105.csv",
+    src: "config/layouts/YB1-X9x-pc105.csv",
+    sub_dir: "touch_keyboard",
+    filename: "layout.csv",
+}
+
+prebuilt_etc {
+    name: "touch_keyboard_layout_pc104.csv",
+    src: "config/layouts/YB1-X9x-pc104.csv",
+    sub_dir: "touch_keyboard",
+}
+
+prebuilt_etc {
+    name: "touch_keyboard_layout_touchpad.csv",
+    src: "config/layout-touchpad.csv",
+    sub_dir: "touch_keyboard",
+}
+
+sh_binary {
+    name: "halo-keyboard-start.sh",
+    src: "halo-keyboard-start.sh",
+    sub_dir: "",
+    vendor: true,
+}

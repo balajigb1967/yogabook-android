@@ -1,0 +1,66 @@
+# Builds the Yoga Book Android 16 ISO on a self-hosted runner.
+# Free GitHub-hosted runners cannot run this build (~120 GB disk needed);
+# see docs/building.md for runner setup.
+
+name: build-iso
+
+on:
+  workflow_dispatch:
+    inputs:
+      clean:
+        description: "Clean the source tree before building"
+        type: boolean
+        default: false
+      skip_sync:
+        description: "Skip repo sync (reuse already-synced tree)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+
+jobs:
+  build:
+    runs-on: [self-hosted, linux, x64, yogabook-build]
+    timeout-minutes: 720
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space check
+        run: |
+          free_gb=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc '0-9')
+          echo "Free disk: ${free_gb}G"
+          if [ "$free_gb" -lt 130 ]; then
+            echo "::error::Need >=130 GB free disk for the LineageOS build (have ${free_gb}G). See docs/building.md"
+            exit 1
+          fi
+
+      - name: Build ISO
+        run: |
+          FLAGS=""
+          [ "${{ inputs.clean }}" = "true" ] && FLAGS="$FLAGS --clean"
+          [ "${{ inputs.skip_sync }}" = "true" ] && FLAGS="$FLAGS --skip-sync"
+          ./scripts/build-local.sh $FLAGS
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yogabook-iso
+          path: |
+            dist/*.iso
+            dist/*.sha256
+            dist/*.txt
+          if-no-files-found: error
+
+      - name: Draft release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="iso-$(date +%Y%m%d-%H%M)"
+          gh release create "$tag" dist/*.iso dist/*.sha256 --draft \
+            --title "Yoga Book Android 16 (LineageOS 23.2) $tag" \
+            --notes "Multi-kernel live ISO with rEFInd touch boot manager and boot/hardware log capture. See docs/flash-guide.md."

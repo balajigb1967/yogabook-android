@@ -1,0 +1,19 @@
+# Build outputs
+out/
+dist/
+*.iso
+*.img
+
+# Repo/workspace artifacts (when this repo is checked out inside a source tree)
+.repo/
+*.pyc
+__pycache__/
+*.swp
+.DS_Store
+
+# Local scratch
+/tmp/
+/scratch/
+
+# App metadata
+.freebuff/

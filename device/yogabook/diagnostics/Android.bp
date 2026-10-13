@@ -1,0 +1,10 @@
+// Yoga Book boot & hardware failure log capture.
+// Writes dmesg / logcat / hardware enumeration reports to the flash media
+// and internal storage so failures can be diagnosed from any PC.
+
+sh_binary {
+    name: "yablog.sh",
+    src: "yablog.sh",
+    sub_dir: "",
+    vendor: true,
+}

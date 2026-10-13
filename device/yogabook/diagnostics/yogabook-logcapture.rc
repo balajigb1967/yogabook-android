@@ -1,0 +1,10 @@
+# Yoga Book boot & hardware failure log capture
+service yablog /vendor/bin/yablog.sh boot
+    class late_start
+    user root
+    group root log sdcard_rw
+    disabled
+    oneshot
+
+on property:sys.boot_completed=1
+    start yablog

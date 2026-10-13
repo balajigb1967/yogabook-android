@@ -1,0 +1,14 @@
+# Yoga Book Halo keyboard handler
+service halo_keyboard /vendor/bin/halo-keyboard-start.sh
+    class late_start
+    user root
+    group root input
+    disabled
+    oneshot
+
+on property:sys.boot_completed=1
+    start halo_keyboard
+
+# Restart it if the surface was not ready on the first try.
+on property:vendor.halo.retry=1
+    restart halo_keyboard
