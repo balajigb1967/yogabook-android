@@ -51,14 +51,31 @@ say "Configuring Kernel"
 cd "$KSRC"
 make x86_64_defconfig
 
+# Strip bloat and debug symbols to prevent disk exhaustion and pahole/BTF build failures
+./scripts/config --disable DEBUG_INFO \
+                 --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT \
+                 --disable DEBUG_INFO_DWARF4 \
+                 --disable DEBUG_INFO_DWARF5 \
+                 --disable DEBUG_INFO_BTF \
+                 --enable DEBUG_INFO_NONE \
+                 --set-val WERROR n
+
 # Merge our Yoga Book hardware fragment
 if [ -f "$HERE/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config" ]; then
   bash scripts/kconfig/merge_config.sh -m .config "$HERE/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config"
+  ./scripts/config --disable DEBUG_INFO \
+                   --disable DEBUG_INFO_BTF \
+                   --enable DEBUG_INFO_NONE \
+                   --set-val WERROR n
   make olddefconfig
 fi
 
 say "Compiling Kernel (bzImage & modules)"
+echo "Disk space before kernel compilation:"
+df -h /
 make -j"$JOBS" bzImage modules
+echo "Disk space after kernel compilation:"
+df -h /
 
 MOD_STAGE="$WORK/modules-stage"
 rm -rf "$MOD_STAGE"
