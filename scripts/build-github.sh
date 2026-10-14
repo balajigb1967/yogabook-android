@@ -20,13 +20,15 @@ JOBS="$(nproc)"
 
 KERNEL_REPO="https://github.com/Yoga-Book/Yoga-Book-Linux-Kernel.git"
 KERNEL_BRANCH="submission/yogabook-x91l-v2"
-SOF_VER="v2.15.1"
+SOF_TAG="v2026.09.2"
+SOF_VER="2026.09.2"
 REFIND_VER="0.14.2"
 LINEAGE_VER="23.2"
 ANDROID_VER="16"
 
-# Default base: LineageOS 23.2 (Android 16) / Android-Generic x86_64
-BASE_ROM_URL="${BASE_ROM_URL:-https://github.com/MisterZtr/LineageOS_gsi/releases/download/v23.2/lineage-23.2-x86_64.img.xz}"
+# Verified LineageOS 23.2 (Android 16) EXT4 GSI + Android x86 live boot harness
+LINEAGE_GSI_URL="${LINEAGE_GSI_URL:-https://downloads.sourceforge.net/project/misterztr-gsi/LineageOS/Android%2016/LineageOS-23.2-20260524-VANILLA-EXT4-GSI.7z}"
+BOOT_HARNESS_URL="${BOOT_HARNESS_URL:-https://downloads.sourceforge.net/project/blissos-dev/Android-Generic/PC/bliss/R/15.8.6/Bliss-v15.8.6-x86_64-OFFICIAL-gapps-20231206.iso}"
 
 say() { echo; echo "==== $* ===="; }
 
@@ -64,40 +66,42 @@ mkdir -p "$MOD_STAGE"
 make INSTALL_MOD_PATH="$MOD_STAGE" INSTALL_MOD_STRIP=1 modules_install
 
 # ---------------------------------------------------------------- 3. Fetch SOF Firmware & Topology
-say "Fetching Sound Open Firmware ($SOF_VER) & Yoga Book RT5677 Topology"
+say "Fetching Sound Open Firmware ($SOF_TAG) & Yoga Book RT5677 Topology"
 FW_STAGE="$WORK/firmware-stage/intel/sof"
 mkdir -p "$FW_STAGE"
 
-# Download SOF official release binaries
-curl -sL --max-time 120 -o "$WORK/sof-bin.tar.gz" \
-  "https://github.com/thesofproject/sof-bin/releases/download/$SOF_VER/sof-bin-$SOF_VER.tar.gz" || true
-if [ -f "$WORK/sof-bin.tar.gz" ]; then
-  tar -xzf "$WORK/sof-bin.tar.gz" -C "$WORK" || true
+# Download SOF release binaries (contains sof-cht-rt5677.tplg)
+if curl -f -sL --retry 3 --max-time 180 -o "$WORK/sof-bin.tar.gz" \
+  "https://github.com/thesofproject/sof-bin/releases/download/$SOF_TAG/sof-bin-$SOF_VER.tar.gz"; then
+  tar -xzf "$WORK/sof-bin.tar.gz" -C "$WORK" 2>/dev/null || true
   cp -a "$WORK/sof-bin-$SOF_VER"/sof/v*/* "$FW_STAGE/" 2>/dev/null || true
   cp -a "$WORK/sof-bin-$SOF_VER"/sof-tplg-v*/* "$FW_STAGE/" 2>/dev/null || true
 fi
 
 # Fetch Maurizio Casciano's tested Yoga Book cht-rt5677 topology
-curl -sL --max-time 60 -o "$FW_STAGE/sof-cht-rt5677.tplg" \
+curl -f -sL --retry 3 --max-time 60 -o "$FW_STAGE/sof-cht-rt5677.tplg" \
   "https://raw.githubusercontent.com/Yoga-Book/Yoga-Book-Sound-Open-Firmware/submission/cht-rt5677-topology2-ipc3-v1/tools/topology/topology2/production/sof-cht-rt5677.tplg" 2>/dev/null || true
 
 # ---------------------------------------------------------------- 4. Prepare Base Android x86 System
-say "Preparing Base Android Rootfs"
+say "Preparing LineageOS $LINEAGE_VER (Android $ANDROID_VER) System & Boot Harness"
 BASE_STAGE="$WORK/android-base"
 mkdir -p "$BASE_STAGE"
 
-if [ ! -f "$WORK/base.iso" ]; then
-  say "Downloading base Android image ($BASE_ROM_URL)"
-  if [[ "$BASE_ROM_URL" == *.xz ]]; then
-    curl -L --retry 3 --max-time 600 -o "$WORK/base.img.xz" "$BASE_ROM_URL"
-    xz -d -k "$WORK/base.img.xz"
-    mv "$WORK/base.img" "$BASE_STAGE/system.img"
-  elif [[ "$BASE_ROM_URL" == *.iso ]]; then
-    curl -L --retry 3 --max-time 600 -o "$WORK/base.iso" "$BASE_ROM_URL"
-    7z x "$WORK/base.iso" -o"$BASE_STAGE" system.sfs system.img initrd.img install.img gearlock -r -y 2>/dev/null || \
-      xorriso -osirrox on -indev "$WORK/base.iso" -extract / "$BASE_STAGE" 2>/dev/null || true
-  else
-    curl -L --retry 3 --max-time 600 -o "$BASE_STAGE/system.img" "$BASE_ROM_URL"
+# Fetch boot harness for initrd.img and live boot scripts
+if [ ! -f "$WORK/boot_harness.iso" ]; then
+  say "Fetching Android x86 live boot harness (initrd.img)"
+  curl -f -L --retry 3 --max-time 600 -o "$WORK/boot_harness.iso" "$BOOT_HARNESS_URL"
+  7z x "$WORK/boot_harness.iso" -o"$BASE_STAGE" initrd.img install.img gearlock -r -y 2>/dev/null || true
+fi
+
+# Fetch LineageOS 23.2 system image
+if [ ! -f "$BASE_STAGE/system.img" ]; then
+  say "Fetching LineageOS 23.2 GSI ($LINEAGE_GSI_URL)"
+  curl -f -L --retry 3 --max-time 600 -o "$WORK/lineage23.2.7z" "$LINEAGE_GSI_URL"
+  7z x "$WORK/lineage23.2.7z" -o"$BASE_STAGE" -y 2>/dev/null || true
+  SYS_RAW=$(find "$BASE_STAGE" -maxdepth 2 -name "*.img" ! -name "initrd.img" ! -name "install.img" | head -1)
+  if [ -n "$SYS_RAW" ] && [ "$SYS_RAW" != "$BASE_STAGE/system.img" ]; then
+    mv -v "$SYS_RAW" "$BASE_STAGE/system.img"
   fi
 fi
 

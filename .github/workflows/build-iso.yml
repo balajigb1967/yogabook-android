@@ -14,8 +14,8 @@ name: build-iso
 on:
   workflow_dispatch:
     inputs:
-      base_rom_url:
-        description: "Base Android x86 ISO download URL (optional)"
+      lineage_gsi_url:
+        description: "Custom LineageOS 23.2 GSI URL (optional, defaults to verified official EXT4 image)"
         type: string
         default: ""
   push:
@@ -65,7 +65,7 @@ jobs:
 
       - name: Build Yoga Book Android ISO
         env:
-          BASE_ROM_URL: ${{ inputs.base_rom_url }}
+          LINEAGE_GSI_URL: ${{ inputs.lineage_gsi_url }}
         run: |
           chmod +x scripts/*.sh
           ./scripts/build-github.sh
