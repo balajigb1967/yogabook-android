@@ -27,8 +27,12 @@ LINEAGE_VER="23.2"
 ANDROID_VER="16"
 
 # Verified LineageOS 23.2 (Android 16) EXT4 GSI + Android x86 live boot harness
-LINEAGE_GSI_URL="${LINEAGE_GSI_URL:-https://downloads.sourceforge.net/project/misterztr-gsi/LineageOS/Android%2016/LineageOS-23.2-20260524-VANILLA-EXT4-GSI.7z}"
+# Base Android x86 boot harness (verified official x86_64 live ISO with working initrd + system.sfs)
 BOOT_HARNESS_URL="${BOOT_HARNESS_URL:-https://downloads.sourceforge.net/project/android-x86/Release%209.0/android-x86_64-9.0-r2.iso}"
+
+# Optional custom system image (e.g. LineageOS GSI or Bliss OS x86_64)
+# If empty, the verified native x86_64 system from the base harness is used.
+LINEAGE_GSI_URL="${LINEAGE_GSI_URL:-}"
 
 say() { echo; echo "==== $* ===="; }
 
@@ -85,40 +89,45 @@ make INSTALL_MOD_PATH="$MOD_STAGE" INSTALL_MOD_STRIP=1 modules_install
 # ---------------------------------------------------------------- 3. Fetch SOF Firmware & Topology
 say "Fetching Sound Open Firmware ($SOF_TAG) & Yoga Book RT5677 Topology"
 FW_STAGE="$WORK/firmware-stage/intel/sof"
-mkdir -p "$FW_STAGE"
+mkdir -p "$FW_STAGE" "$WORK/firmware-stage/intel/sof-tplg"
 
 # Download SOF release binaries (contains sof-cht-rt5677.tplg)
 if curl -f -sL --retry 3 --max-time 180 -o "$WORK/sof-bin.tar.gz" \
   "https://github.com/thesofproject/sof-bin/releases/download/$SOF_TAG/sof-bin-$SOF_VER.tar.gz"; then
   tar -xzf "$WORK/sof-bin.tar.gz" -C "$WORK" 2>/dev/null || true
   cp -a "$WORK/sof-bin-$SOF_VER"/sof/v*/* "$FW_STAGE/" 2>/dev/null || true
-  cp -a "$WORK/sof-bin-$SOF_VER"/sof-tplg-v*/* "$FW_STAGE/" 2>/dev/null || true
+  cp -a "$WORK/sof-bin-$SOF_VER"/sof-tplg-v*/* "$WORK/firmware-stage/intel/sof-tplg/" 2>/dev/null || true
 fi
 
 # Fetch Maurizio Casciano's tested Yoga Book cht-rt5677 topology
 curl -f -sL --retry 3 --max-time 60 -o "$FW_STAGE/sof-cht-rt5677.tplg" \
   "https://raw.githubusercontent.com/Yoga-Book/Yoga-Book-Sound-Open-Firmware/submission/cht-rt5677-topology2-ipc3-v1/tools/topology/topology2/production/sof-cht-rt5677.tplg" 2>/dev/null || true
+cp -f "$FW_STAGE/sof-cht-rt5677.tplg" "$WORK/firmware-stage/intel/sof-tplg/" 2>/dev/null || true
+cp -f "$FW_STAGE/sof-cht-rt5677.tplg" "$WORK/firmware-stage/" 2>/dev/null || true
 
 # ---------------------------------------------------------------- 4. Prepare Base Android x86 System
-say "Preparing LineageOS $LINEAGE_VER (Android $ANDROID_VER) System & Boot Harness"
+say "Preparing Base Android x86 System & Boot Harness"
 BASE_STAGE="$WORK/android-base"
 mkdir -p "$BASE_STAGE"
 
 # Fetch boot harness for initrd.img and live boot scripts
 if [ ! -f "$WORK/boot_harness.iso" ]; then
-  say "Fetching Android x86 live boot harness (initrd.img)"
+  say "Fetching Android x86 live boot harness ($BOOT_HARNESS_URL)"
   curl -f -L --retry 3 --max-time 600 -o "$WORK/boot_harness.iso" "$BOOT_HARNESS_URL"
-  7z x "$WORK/boot_harness.iso" -o"$BASE_STAGE" initrd.img install.img gearlock -r -y 2>/dev/null || true
+  7z x "$WORK/boot_harness.iso" -o"$BASE_STAGE" -y 2>/dev/null || true
 fi
 
-# Fetch LineageOS 23.2 system image
-if [ ! -f "$BASE_STAGE/system.img" ]; then
-  say "Fetching LineageOS 23.2 GSI ($LINEAGE_GSI_URL)"
-  curl -f -L --retry 3 --max-time 600 -o "$WORK/lineage23.2.7z" "$LINEAGE_GSI_URL"
-  7z x "$WORK/lineage23.2.7z" -o"$BASE_STAGE" -y 2>/dev/null || true
-  SYS_RAW=$(find "$BASE_STAGE" -maxdepth 2 -name "*.img" ! -name "initrd.img" ! -name "install.img" | head -1)
+# Fetch custom system image if specified
+if [ -n "$LINEAGE_GSI_URL" ]; then
+  say "Fetching custom System Image ($LINEAGE_GSI_URL)"
+  curl -f -L --retry 3 --max-time 600 -o "$WORK/custom_system.archive" "$LINEAGE_GSI_URL"
+  7z x "$WORK/custom_system.archive" -o"$BASE_STAGE" -y 2>/dev/null || true
+  SYS_RAW=$(find "$BASE_STAGE" -maxdepth 2 -name "*.img" ! -name "initrd.img" ! -name "install.img" ! -name "ramdisk.img" | head -1)
   if [ -n "$SYS_RAW" ] && [ "$SYS_RAW" != "$BASE_STAGE/system.img" ]; then
     mv -v "$SYS_RAW" "$BASE_STAGE/system.img"
+  fi
+  if [ -f "$BASE_STAGE/system.img" ]; then
+    rm -f "$BASE_STAGE/system.sfs"
   fi
 fi
 
@@ -132,7 +141,12 @@ mkdir -p "$STAGE/ANDRID" "$STAGE/bootlogs" "$STAGE/boot/grub" "$STAGE/EFI/BOOT/i
 cp -v "$KSRC/arch/x86/boot/bzImage" "$STAGE/ANDRID/kernel"
 
 # Copy base system image(s)
-for f in system.sfs system.img gearlock install.img; do
+if [ -f "$BASE_STAGE/system.img" ]; then
+  cp -v "$BASE_STAGE/system.img" "$STAGE/ANDRID/"
+elif [ -f "$BASE_STAGE/system.sfs" ]; then
+  cp -v "$BASE_STAGE/system.sfs" "$STAGE/ANDRID/"
+fi
+for f in gearlock install.img ramdisk.img; do
   if [ -f "$BASE_STAGE/$f" ]; then
     cp -v "$BASE_STAGE/$f" "$STAGE/ANDRID/"
   fi
@@ -145,18 +159,30 @@ rm -rf "$RDK_WORK"
 mkdir -p "$RDK_WORK"
 
 if [ -f "$BASE_STAGE/initrd.img" ]; then
-  (cd "$RDK_WORK" && zcat "$BASE_STAGE/initrd.img" | cpio -idmv 2>/dev/null || cpio -idmv < "$BASE_STAGE/initrd.img" 2>/dev/null || true)
+  (cd "$RDK_WORK" && (gzip -dc "$BASE_STAGE/initrd.img" 2>/dev/null || xz -dc "$BASE_STAGE/initrd.img" 2>/dev/null || cat "$BASE_STAGE/initrd.img") | cpio -idmv 2>/dev/null || true)
 fi
 
 # Overlay our modules and firmware
-mkdir -p "$RDK_WORK/lib/modules" "$RDK_WORK/lib/firmware"
+mkdir -p "$RDK_WORK/lib/modules" "$RDK_WORK/lib/firmware/intel/sof" "$RDK_WORK/lib/firmware/intel/sof-tplg"
 cp -a "$MOD_STAGE/lib/modules/." "$RDK_WORK/lib/modules/" 2>/dev/null || true
-cp -a "$FW_STAGE/." "$RDK_WORK/lib/firmware/intel/sof/" 2>/dev/null || true
+cp -a "$WORK/firmware-stage/." "$RDK_WORK/lib/firmware/" 2>/dev/null || true
 
-# Overlay Halo keyboard binary and config
-mkdir -p "$RDK_WORK/system/bin" "$RDK_WORK/system/etc/touch_keyboard"
+# Overlay Halo keyboard binary, script and config
+mkdir -p "$RDK_WORK/system/bin" "$RDK_WORK/system/etc/touch_keyboard" \
+         "$RDK_WORK/vendor/bin" "$RDK_WORK/vendor/etc/touch_keyboard" \
+         "$RDK_WORK/bin" "$RDK_WORK/etc/touch_keyboard"
+
 cp -v "$WORK/touch_keyboard_handler" "$RDK_WORK/system/bin/" 2>/dev/null || true
+cp -v "$WORK/touch_keyboard_handler" "$RDK_WORK/vendor/bin/" 2>/dev/null || true
+cp -v "$WORK/touch_keyboard_handler" "$RDK_WORK/bin/" 2>/dev/null || true
+
+cp -v "$HERE/device/yogabook/halo-keyboard/halo-keyboard-start.sh" "$RDK_WORK/system/bin/" 2>/dev/null || true
+cp -v "$HERE/device/yogabook/halo-keyboard/halo-keyboard-start.sh" "$RDK_WORK/vendor/bin/" 2>/dev/null || true
+chmod +x "$RDK_WORK"/system/bin/* "$RDK_WORK"/vendor/bin/* "$RDK_WORK"/bin/* 2>/dev/null || true
+
 cp -a "$HERE/device/yogabook/halo-keyboard/config/." "$RDK_WORK/system/etc/touch_keyboard/" 2>/dev/null || true
+cp -a "$HERE/device/yogabook/halo-keyboard/config/." "$RDK_WORK/vendor/etc/touch_keyboard/" 2>/dev/null || true
+cp -a "$HERE/device/yogabook/halo-keyboard/config/." "$RDK_WORK/etc/touch_keyboard/" 2>/dev/null || true
 
 # Repack initrd.img
 (cd "$RDK_WORK" && find . | cpio -o -H newc 2>/dev/null | gzip -9 > "$STAGE/ANDRID/initrd.img")
@@ -176,20 +202,28 @@ cp -a "$WORK/refind-bin-$REFIND_VER/fonts" "$STAGE/EFI/BOOT/" 2>/dev/null || tru
 
 CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID"
 
+if [ -n "$LINEAGE_GSI_URL" ]; then
+  OS_TITLE="Yoga Book LineageOS $LINEAGE_VER (x86_64)"
+  ISO_NAME="YOGABOOK-LineageOS-$LINEAGE_VER-x86_64-$(date +%Y%m%d)-live.iso"
+else
+  OS_TITLE="Yoga Book Android-x86 Live (x86_64)"
+  ISO_NAME="YOGABOOK-Android-x86_64-$(date +%Y%m%d)-live.iso"
+fi
+
 cat > "$STAGE/EFI/BOOT/refind.conf" <<EOF
 timeout 5
 screensaver 300
 resolution 1920 1200
 showtools shutdown,reboot
 
-menuentry "Yoga Book LineageOS $LINEAGE_VER (Android $ANDROID_VER)" {
+menuentry "$OS_TITLE" {
     icon /EFI/BOOT/icons/os_linux.png
     loader /ANDRID/kernel
     initrd /ANDRID/initrd.img
     options "$CMDLINE quiet"
 }
 
-menuentry "Yoga Book LineageOS $LINEAGE_VER (Debug Console)" {
+menuentry "$OS_TITLE (Debug Console)" {
     icon /EFI/BOOT/icons/tool_shell.png
     loader /ANDRID/kernel
     initrd /ANDRID/initrd.img
@@ -202,11 +236,11 @@ EOF
 
 cat > "$STAGE/boot/grub/grub.cfg" <<EOF
 set timeout=5
-menuentry "Yoga Book LineageOS $LINEAGE_VER (Android $ANDROID_VER)" {
+menuentry "$OS_TITLE" {
     linux /ANDRID/kernel $CMDLINE quiet
     initrd /ANDRID/initrd.img
 }
-menuentry "Yoga Book LineageOS $LINEAGE_VER (Debug Mode)" {
+menuentry "$OS_TITLE (Debug Mode)" {
     linux /ANDRID/kernel $CMDLINE DEBUG=2
     initrd /ANDRID/initrd.img
 }
@@ -214,7 +248,6 @@ EOF
 
 # ---------------------------------------------------------------- 7. Create Hybrid ISO
 say "Generating Hybrid ISO with make-refind-iso.sh"
-ISO_NAME="YOGABOOK-LineageOS-$LINEAGE_VER-x86_64-$(date +%Y%m%d)-live.iso"
 OUT_ISO="$DIST/$ISO_NAME"
 
 FILE_ARGS=()
@@ -234,3 +267,4 @@ sha256sum "$ISO_NAME" > "$ISO_NAME.sha256"
 say "Build Complete!"
 ls -lh "$DIST"
 cat "$DIST/$ISO_NAME.sha256"
+

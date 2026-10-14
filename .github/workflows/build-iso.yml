@@ -61,7 +61,8 @@ jobs:
             build-essential gcc g++ bc bison flex \
             libssl-dev libelf-dev libncurses-dev \
             xorriso mtools grub-pc-bin grub-efi-amd64-bin \
-            p7zip-full squashfs-tools curl unzip rsync git
+            p7zip-full squashfs-tools curl unzip rsync git \
+            isolinux syslinux-common
 
       - name: Build Yoga Book Android ISO
         env:
