@@ -36,11 +36,22 @@ jobs:
 
       - name: Free Disk Space on GitHub Runner
         run: |
-          echo "Initial disk space:"
+          echo "=== Initial disk space ==="
           df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
-          sudo docker image prune -a -f || true
-          echo "Disk space after cleanup:"
+          echo "Cleaning preinstalled bloat (Android SDK, .NET, GHC, Docker, Boost, vcpkg)..."
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache \
+            /usr/local/share/powershell \
+            /usr/local/share/vcpkg \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /var/lib/docker
+          sudo docker system prune -a -f --volumes 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          echo "=== Disk space after cleanup ==="
           df -h /
 
       - name: Install Build Dependencies
