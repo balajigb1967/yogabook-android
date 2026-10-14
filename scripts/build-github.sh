@@ -187,18 +187,17 @@ cp -a "$HERE/device/yogabook/halo-keyboard/config/." "$RDK_WORK/etc/touch_keyboa
 # Repack initrd.img
 (cd "$RDK_WORK" && find . | cpio -o -H newc 2>/dev/null | gzip -9 > "$STAGE/ANDRID/initrd.img")
 
-# ---------------------------------------------------------------- 6. Setup rEFInd & GRUB Bootloader
-say "Fetching rEFInd ($REFIND_VER)"
-if [ ! -d "$WORK/refind-bin-$REFIND_VER" ]; then
-  curl -sL --max-time 120 -o "$WORK/refind.zip" \
-    "https://sourceforge.net/projects/refind/files/$REFIND_VER/refind-bin-$REFIND_VER.zip/download"
-  unzip -q -o "$WORK/refind.zip" -d "$WORK"
-fi
+# ---------------------------------------------------------------- 6. Setup GRUB EFI Bootloader
+say "Building GRUB EFI Bootloader (BOOTX64.EFI)"
+cat > "$WORK/grub-standalone-efi.cfg" <<'EOF'
+search --file --no-floppy --set=root /boot/grub/grub.cfg
+set prefix=($root)/boot/grub
+configfile $prefix/grub.cfg
+EOF
 
-REF="$WORK/refind-bin-$REFIND_VER/refind"
-cp -v "$REF/refind_x64.efi" "$STAGE/EFI/BOOT/BOOTX64.EFI"
-cp -a "$REF/icons/." "$STAGE/EFI/BOOT/icons/"
-cp -a "$WORK/refind-bin-$REFIND_VER/fonts" "$STAGE/EFI/BOOT/" 2>/dev/null || true
+grub-mkimage -O x86_64-efi -o "$STAGE/EFI/BOOT/BOOTX64.EFI" \
+  --config="$WORK/grub-standalone-efi.cfg" -p '/boot/grub' \
+  fat part_gpt part_msdos normal linux configfile search search_fs_file search_label efi_gop efi_uga all_video gfxterm font
 
 CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID"
 
@@ -210,39 +209,21 @@ else
   ISO_NAME="YOGABOOK-Android-x86_64-$(date +%Y%m%d)-live.iso"
 fi
 
-cat > "$STAGE/EFI/BOOT/refind.conf" <<EOF
-timeout 3
-screensaver 300
-resolution 1920 1200
-showtools shutdown,reboot
-scanfor manual
-default_selection "$OS_TITLE"
-
-menuentry "$OS_TITLE" {
-    icon /EFI/BOOT/icons/os_linux.png
-    loader /ANDRID/kernel
-    initrd /ANDRID/initrd.img
-    options "$CMDLINE quiet"
-}
-
-menuentry "$OS_TITLE (Debug Console)" {
-    icon /EFI/BOOT/icons/tool_shell.png
-    loader /ANDRID/kernel
-    initrd /ANDRID/initrd.img
-    options "$CMDLINE DEBUG=2"
-}
-
-menuentry "Reboot" { reboot }
-menuentry "Shutdown" { shutdown }
-EOF
-
 cat > "$STAGE/boot/grub/grub.cfg" <<EOF
-set timeout=5
+set timeout=3
+set default=0
+
+set gfxmode=auto
+set gfxpayload=keep
+
 menuentry "$OS_TITLE" {
-    linux /ANDRID/kernel $CMDLINE quiet
+    set gfxpayload=keep
+    linux /ANDRID/kernel $CMDLINE
     initrd /ANDRID/initrd.img
 }
+
 menuentry "$OS_TITLE (Debug Mode)" {
+    set gfxpayload=keep
     linux /ANDRID/kernel $CMDLINE DEBUG=2
     initrd /ANDRID/initrd.img
 }

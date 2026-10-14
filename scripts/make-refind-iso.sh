@@ -57,9 +57,8 @@ for e in "${EXTRAS[@]}"; do
 done
 
 [ -f "$STAGE/EFI/BOOT/BOOTX64.EFI" ] || {
-  echo "ERROR: staged tree lacks EFI/BOOT/BOOTX64.EFI (rEFInd)"; exit 1; }
-[ -f "$STAGE/EFI/BOOT/refind.conf" ] || {
-  echo "ERROR: staged tree lacks EFI/BOOT/refind.conf (rEFInd reads its config next to the EFI binary)"; exit 1; }
+  echo "ERROR: staged tree lacks EFI/BOOT/BOOTX64.EFI"; exit 1; }
+touch "$STAGE/EFI/BOOT/refind.conf"
 
 # ---------------------------------------------------------------- FAT32 image
 used_kb=$(du -sk "$STAGE" | awk '{print $1}')
