@@ -211,10 +211,12 @@ else
 fi
 
 cat > "$STAGE/EFI/BOOT/refind.conf" <<EOF
-timeout 5
+timeout 15
 screensaver 300
 resolution 1920 1200
 showtools shutdown,reboot
+scanfor manual
+default_selection "$OS_TITLE"
 
 menuentry "$OS_TITLE" {
     icon /EFI/BOOT/icons/os_linux.png
