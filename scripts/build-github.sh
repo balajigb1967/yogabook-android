@@ -28,7 +28,7 @@ ANDROID_VER="16"
 
 # Verified LineageOS 23.2 (Android 16) EXT4 GSI + Android x86 live boot harness
 LINEAGE_GSI_URL="${LINEAGE_GSI_URL:-https://downloads.sourceforge.net/project/misterztr-gsi/LineageOS/Android%2016/LineageOS-23.2-20260524-VANILLA-EXT4-GSI.7z}"
-BOOT_HARNESS_URL="${BOOT_HARNESS_URL:-https://downloads.sourceforge.net/project/blissos-dev/Android-Generic/PC/bliss/R/15.8.6/Bliss-v15.8.6-x86_64-OFFICIAL-gapps-20231206.iso}"
+BOOT_HARNESS_URL="${BOOT_HARNESS_URL:-https://downloads.sourceforge.net/project/android-x86/Release%209.0/android-x86_64-9.0-r2.iso}"
 
 say() { echo; echo "==== $* ===="; }
 
