@@ -211,7 +211,7 @@ else
 fi
 
 cat > "$STAGE/EFI/BOOT/refind.conf" <<EOF
-timeout 15
+timeout 3
 screensaver 300
 resolution 1920 1200
 showtools shutdown,reboot
