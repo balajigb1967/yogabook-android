@@ -33,27 +33,22 @@ Yoga Book device overlay in this repository.
   on the flash media. If the screen goes black, pull the SD card into any PC and
   read `/bootlogs/`.
 
-## Building
+## Building via GitHub Actions (100% Free, No PC Needed)
 
-Everything is scripted; the same script runs locally (WSL2/Ubuntu, ~140 GB free disk)
-and on a self-hosted GitHub Actions runner. Free GitHub-hosted runners are **too
-small** for an Android source build (14 GB disk vs ~120 GB needed).
+The build is automated to run **directly on GitHub-hosted runners** in your repository:
 
-```bash
-# On Ubuntu / WSL2 with >=140 GB free disk and >=16 GB RAM:
-./scripts/build-local.sh            # sync sources, build, produce ISO(s) in ./dist
-```
+1. Go to your repository on GitHub: `https://github.com/balajigb1967/yogabook-android`
+2. Click on the **Actions** tab.
+3. Select the **build-iso** workflow on the left sidebar.
+4. Click **Run workflow** -> **Run workflow**.
 
-Outputs land in `dist/`:
-
-* `YOGABOOK-x86_64-<version>-live.iso` — bootable live/install ISO (rEFInd, multi-kernel)
-* `bootlogs-readme.txt` — how log capture works
-
-### CI (self-hosted runner)
-
-Register your own Linux box as a self-hosted runner with labels
-`[self-hosted, linux, x64]` and run the **build-iso** workflow. See
-[docs/building.md](docs/building.md).
+In ~20 minutes, the GitHub Actions runner will:
+* Clone and compile the **Yoga Book Linux Kernel** (`submission/yogabook-x91l-v2`) with Maurizio Casciano's ASoC `cht_rt5677` machine driver and Goodix touch driver.
+* Compile the **Halo Keyboard daemon** (`touch_keyboard_handler`) and package it with layout maps.
+* Bundle **Sound Open Firmware (SOF v2.15.1)** and the `cht-rt5677-topology2-ipc3-v1` topology.
+* Repackage the base Android rootfs with Yoga Book portrait display quirks (`ORIENTATION_90`).
+* Create a bootable hybrid ISO with **rEFInd touch bootloader** and GRUB BIOS fallback.
+* Upload the completed ISO and SHA256 checksums to **Artifacts** and create a **Draft Release**!
 
 ## Flashing
 

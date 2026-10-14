@@ -1,66 +1,84 @@
-# Builds the Yoga Book Android 16 ISO on a self-hosted runner.
-# Free GitHub-hosted runners cannot run this build (~120 GB disk needed);
-# see docs/building.md for runner setup.
+# Builds the Lenovo Yoga Book Android Live ISO directly on GitHub-hosted runners.
+# No self-hosted runner or local high-spec PC needed.
+#
+# Hardware target: Lenovo Yoga Book (YB1-X90F / YB1-X91F / YB1-X91L)
+# Features:
+#   - Linux 6.x kernel with Maurizio Casciano's Yoga Book patchset (ASoC cht_rt5677)
+#   - Sound Open Firmware (SOF v2.15.1) RT5677 topology
+#   - Halo Keyboard daemon (touch_keyboard_handler) + uinput & haptics
+#   - rEFInd touch-friendly UEFI bootloader + hybrid GRUB BIOS fallback
+#   - Native portrait display orientation fix (ORIENTATION_90)
 
 name: build-iso
 
 on:
   workflow_dispatch:
     inputs:
-      clean:
-        description: "Clean the source tree before building"
-        type: boolean
-        default: false
-      skip_sync:
-        description: "Skip repo sync (reuse already-synced tree)"
-        type: boolean
-        default: false
+      base_rom_url:
+        description: "Base Android x86 ISO download URL (optional)"
+        type: string
+        default: ""
   push:
     branches: [main]
     paths-ignore:
       - "docs/**"
       - "README.md"
+      - "*.png"
 
 jobs:
   build:
-    runs-on: [self-hosted, linux, x64, yogabook-build]
-    timeout-minutes: 720
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Free disk space check
+      - name: Free Disk Space on GitHub Runner
         run: |
-          free_gb=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc '0-9')
-          echo "Free disk: ${free_gb}G"
-          if [ "$free_gb" -lt 130 ]; then
-            echo "::error::Need >=130 GB free disk for the LineageOS build (have ${free_gb}G). See docs/building.md"
-            exit 1
-          fi
+          echo "Initial disk space:"
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo docker image prune -a -f || true
+          echo "Disk space after cleanup:"
+          df -h /
 
-      - name: Build ISO
+      - name: Install Build Dependencies
         run: |
-          FLAGS=""
-          [ "${{ inputs.clean }}" = "true" ] && FLAGS="$FLAGS --clean"
-          [ "${{ inputs.skip_sync }}" = "true" ] && FLAGS="$FLAGS --skip-sync"
-          ./scripts/build-local.sh $FLAGS
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential gcc g++ bc bison flex \
+            libssl-dev libelf-dev libncurses-dev \
+            xorriso mtools grub-pc-bin grub-efi-amd64-bin \
+            p7zip-full squashfs-tools curl unzip rsync git
 
-      - name: Upload ISO artifact
+      - name: Build Yoga Book Android ISO
+        env:
+          BASE_ROM_URL: ${{ inputs.base_rom_url }}
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/build-github.sh
+
+      - name: Upload ISO Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: yogabook-iso
+          name: yogabook-android-live-iso
           path: |
             dist/*.iso
             dist/*.sha256
-            dist/*.txt
           if-no-files-found: error
 
-      - name: Draft release
+      - name: Draft GitHub Release
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="iso-$(date +%Y%m%d-%H%M)"
           gh release create "$tag" dist/*.iso dist/*.sha256 --draft \
-            --title "Yoga Book Android 16 (LineageOS 23.2) $tag" \
-            --notes "Multi-kernel live ISO with rEFInd touch boot manager and boot/hardware log capture. See docs/flash-guide.md."
+            --title "Yoga Book Android Live ISO ($tag)" \
+            --notes "Automated Lenovo Yoga Book (YB1-X90F/X91F/X91L) Live ISO built with GitHub Actions.
+            - Kernel: Linux 6.x (Yoga-Book-Linux-Kernel submission/yogabook-x91l-v2)
+            - Audio: ASoC CHT-RT5677 + SOF v2.15.1
+            - Input: Goodix Halo Keyboard handler + DRV2604 haptics
+            - Boot: rEFInd touch-enabled boot menu
+            - Display: Native portrait orientation quirk"
