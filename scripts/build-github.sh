@@ -529,7 +529,7 @@ for f in /usr/share/grub/unicode.pf2 /boot/grub/fonts/unicode.pf2; do
   fi
 done
 
-CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID"
+CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID sdhci.debug_quirks2=0x04"
 
 if [ -n "$LINEAGE_GSI_URL" ]; then
   OS_TITLE="Yoga Book LineageOS $LINEAGE_VER (x86_64)"
@@ -555,6 +555,14 @@ menuentry "$OS_TITLE - Standard" {
     set gfxpayload=keep
     echo "Loading Yoga Book Kernel..."
     linux /ANDRID/kernel $CMDLINE quiet
+    echo "Loading Initrd..."
+    initrd /ANDRID/initrd.img
+}
+
+menuentry "$OS_TITLE - Install to Disk (eMMC)" {
+    set gfxpayload=keep
+    echo "Loading Android-x86 Installer..."
+    linux /ANDRID/kernel $CMDLINE INSTALL=1
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
