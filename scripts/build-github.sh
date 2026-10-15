@@ -283,7 +283,10 @@ if [ -n "$LOG_DIR" ]; then
     } > "$OUT_FILE" 2>&1
     cp -f "$OUT_FILE" "$LOG_DIR/harddisk-detection-latest.txt" 2>/dev/null || true
     echo ">>> [LOGGING] Boot & harddisk detection log captured to $OUT_FILE"
-    ( dmesg -w >> "$LOG_DIR/dmesg.log" 2>/dev/null ) &
+    sync
+    if [ "$LOG_DIR" = "/mnt_log/bootlogs" ]; then
+        umount /mnt_log 2>/dev/null || true
+    fi
 fi
 EOF
 chmod +x "$RDK_WORK/scripts/yogabook-disk-detect.sh"
@@ -349,7 +352,8 @@ old_check_root_dev = """	if [ "`dirname $1`" = "/dev" ]; then
 		dev=$1
 	fi"""
 
-new_check_root_dev = """	dev=$1
+new_check_root_dev = """	umount /mnt_log 2>/dev/null || true
+	dev=$1
 	[ -e "$dev" ] || return 1
 	blk=$(basename "$dev")
 	mkdir -p /dev/block
@@ -551,18 +555,18 @@ terminal_output gfxterm console || true
 set menu_color_normal=white/black
 set menu_color_highlight=black/light-gray
 
-menuentry "$OS_TITLE - Standard" {
+menuentry "$OS_TITLE - Install to Disk (eMMC) [Default]" {
     set gfxpayload=keep
-    echo "Loading Yoga Book Kernel..."
-    linux /ANDRID/kernel $CMDLINE quiet
+    echo "Loading Android-x86 Installer..."
+    linux /ANDRID/kernel $CMDLINE INSTALL=1
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
 
-menuentry "$OS_TITLE - Install to Disk (eMMC)" {
+menuentry "$OS_TITLE - Standard Live" {
     set gfxpayload=keep
-    echo "Loading Android-x86 Installer..."
-    linux /ANDRID/kernel $CMDLINE INSTALL=1
+    echo "Loading Yoga Book Kernel..."
+    linux /ANDRID/kernel $CMDLINE quiet
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
