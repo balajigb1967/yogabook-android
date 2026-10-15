@@ -212,6 +212,23 @@ for b in /sys/class/block/*; do
     echo "    /dev/$bn: $mod (${mb} MB, removable=$rem)"
 done
 
+# Ensure all block devices in sysfs have nodes in /dev
+for b in /sys/class/block/*; do
+    [ -d "$b" ] || continue
+    bn="${b##*/}"
+    case "$bn" in loop*|ram*) continue ;; esac
+    if [ ! -b "/dev/$bn" ] && [ -f "$b/dev" ]; then
+        dev_num=$(cat "$b/dev" 2>/dev/null)
+        if [ -n "$dev_num" ]; then
+            major=${dev_num%:*}
+            minor=${dev_num#*:}
+            mknod "/dev/$bn" b "$major" "$minor" 2>/dev/null
+            mkdir -p /dev/block
+            ln -sf "/dev/$bn" "/dev/block/$bn" 2>/dev/null
+        fi
+    fi
+done
+
 # Try locating bootlogs on any mounted partition or attempt mounting boot media
 LOG_DIR=""
 for m in $(awk '{print $2}' /proc/mounts 2>/dev/null); do
@@ -311,8 +328,10 @@ new_try_mount = """try_mount()
 	RW=$1; shift
 	dev=$1
 	target=$2
+	mkdir -p "$target"
 	mount -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
 	mount -t vfat -o $RW,noatime,check=relaxed,utf8 "$dev" "$target" 2>/dev/null && return 0
+	mount -t vfat -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
 	mount -t ext4 -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
 	mount -t iso9660 -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
 	mount.ntfs-3g -o rw,force "$dev" "$target" 2>/dev/null && return 0
@@ -320,7 +339,24 @@ new_try_mount = """try_mount()
 }"""
 c = c.replace(old_try_mount, new_try_mount)
 
-# 3. Parse SRC= from cmdline
+# 3. Fix check_root to never mangle device paths
+old_check_root_dev = """	if [ "`dirname $1`" = "/dev" ]; then
+		[ -e $1 ] || return 1
+		blk=`basename $1`
+		[ ! -e /dev/block/$blk ] && ln $1 /dev/block
+		dev=/dev/block/$blk
+	else
+		dev=$1
+	fi"""
+
+new_check_root_dev = """	dev=$1
+	[ -e "$dev" ] || return 1
+	blk=$(basename "$dev")
+	mkdir -p /dev/block
+	[ ! -e "/dev/block/$blk" ] && ln -sf "$dev" "/dev/block/$blk" 2>/dev/null"""
+c = c.replace(old_check_root_dev, new_check_root_dev)
+
+# 4. Parse SRC= from cmdline
 old_cmdline = """for c in `cat /proc/cmdline`; do
 	case $c in
 		iso-scan/filename=*)
@@ -337,6 +373,9 @@ new_cmdline = """for c in `cat /proc/cmdline`; do
 		SRC=*)
 			eval $c
 			;;
+		src=*)
+			eval $c
+			;;
 		iso-scan/filename=*)
 			SRC=iso
 			eval `echo $c | cut -b1-3,18-`
@@ -349,7 +388,7 @@ done
 SRC=$(echo "$SRC" | sed 's|^/*||;s|/*$||')"""
 c = c.replace(old_cmdline, new_cmdline)
 
-# 4. Auto-detect directory containing ramdisk.img
+# 5. Auto-detect directory containing ramdisk.img
 old_ramdisk = """	if [ -e /mnt/$SRC/$RAMDISK ]; then
 		zcat /mnt/$SRC/$RAMDISK | cpio -id > /dev/null
 	elif [ -b /dev/$RAMDISK ]; then
@@ -380,6 +419,51 @@ new_ramdisk = """	if [ -z "$SRC" ] || [ ! -e "/mnt/$SRC/$RAMDISK" ]; then
 		return 1
 	fi"""
 c = c.replace(old_ramdisk, new_ramdisk)
+
+# 6. Dynamically synthesize block device nodes from /sys/class/block in the detection loop
+old_loop = """while :; do
+	for device in ${ROOT:-/dev/[hmnsv][dmrv][0-9a-z]*}; do
+		check_root $device && break 2
+		mountpoint -q /mnt && umount /mnt
+	done
+	sleep 1
+	echo -n .
+done"""
+
+new_loop = """while :; do
+	for b in /sys/class/block/*; do
+		[ -d "$b" ] || continue
+		bn="${b##*/}"
+		case "$bn" in loop*|ram*) continue ;; esac
+		if [ ! -b "/dev/$bn" ] && [ -f "$b/dev" ]; then
+			dev_num=$(cat "$b/dev" 2>/dev/null)
+			if [ -n "$dev_num" ]; then
+				major=${dev_num%:*}
+				minor=${dev_num#*:}
+				mknod "/dev/$bn" b "$major" "$minor" 2>/dev/null
+				mkdir -p /dev/block
+				ln -sf "/dev/$bn" "/dev/block/$bn" 2>/dev/null
+			fi
+		fi
+	done
+	mdev -s 2>/dev/null
+
+	for device in ${ROOT:-/dev/[hmnsv][dmrv][0-9a-z]*}; do
+		check_root $device && break 2
+		mountpoint -q /mnt && umount /mnt
+	done
+	sleep 1
+	echo -n .
+done"""
+c = c.replace(old_loop, new_loop)
+
+# 7. Early devtmpfs mount if supported
+old_mounts = """	busybox mount -t proc proc /proc
+	busybox mount -t sysfs sys /sys"""
+new_mounts = """	busybox mount -t proc proc /proc
+	busybox mount -t sysfs sys /sys
+	busybox mount -t devtmpfs devtmpfs /dev 2>/dev/null || true"""
+c = c.replace(old_mounts, new_mounts)
 
 with open(init_path, "w", encoding="latin1") as f:
     f.write(c)
