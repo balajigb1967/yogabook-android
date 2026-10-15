@@ -154,7 +154,7 @@ done
 
 # Integrate custom modules into initrd
 say "Repacking initrd with Yoga Book modules and Halo Keyboard files"
-RDK_WORK="$WORK/rdk_work"
+export RDK_WORK="$WORK/rdk_work"
 rm -rf "$RDK_WORK"
 mkdir -p "$RDK_WORK"
 
@@ -273,11 +273,9 @@ chmod +x "$RDK_WORK/scripts/yogabook-disk-detect.sh"
 
 # Hook detection and robust mounting into initrd init
 if [ -f "$RDK_WORK/init" ]; then
-  python3 - <<'PYEOF'
-import os
-init_path = os.environ.get("RDK_WORK", "") + "/init"
-if not os.path.exists(init_path):
-    init_path = "init"
+  python3 - "$RDK_WORK/init" <<'PYEOF'
+import sys, os
+init_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.environ.get("RDK_WORK", ""), "init")
 with open(init_path, "r", encoding="latin1") as f:
     c = f.read()
 
