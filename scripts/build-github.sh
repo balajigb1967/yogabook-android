@@ -311,7 +311,7 @@ if [ -f "$prefix/grub.cfg" ]; then
 elif [ -f "($root)/ANDRID/kernel" ]; then
     menuentry "Direct Fallback Boot" {
         set gfxpayload=keep
-        linux ($root)/ANDRID/kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID console=tty0 earlycon=efifb fbcon=rotate:1 video=DSI-1:1200x1920,rotate=90
+        linux ($root)/ANDRID/kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID quiet
         initrd ($root)/ANDRID/initrd.img
     }
 fi
@@ -342,7 +342,7 @@ for f in /usr/share/grub/unicode.pf2 /boot/grub/fonts/unicode.pf2; do
   fi
 done
 
-CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID console=tty0 console=ttyS0,115200 earlycon=efifb fbcon=rotate:1 video=DSI-1:1200x1920,rotate=90"
+CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID"
 
 if [ -n "$LINEAGE_GSI_URL" ]; then
   OS_TITLE="Yoga Book LineageOS $LINEAGE_VER (x86_64)"
@@ -364,26 +364,34 @@ terminal_output gfxterm console || true
 set menu_color_normal=white/black
 set menu_color_highlight=black/light-gray
 
-menuentry "$OS_TITLE" {
+menuentry "$OS_TITLE - Standard" {
     set gfxpayload=keep
     echo "Loading Yoga Book Kernel..."
     linux /ANDRID/kernel $CMDLINE quiet
-    echo "Loading Initrd (Storage & Halo Keyboard Drivers)..."
-    initrd /ANDRID/initrd.img
-}
-
-menuentry "$OS_TITLE (Verbose / Debug Mode & Hardware Logging)" {
-    set gfxpayload=keep
-    echo "Loading Yoga Book Kernel in Verbose Debug Mode..."
-    linux /ANDRID/kernel $CMDLINE DEBUG=2 loglevel=7
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
 
-menuentry "$OS_TITLE (Safe Graphics / Fallback VESA)" {
+menuentry "$OS_TITLE - Verbose Console" {
+    set gfxpayload=keep
+    echo "Loading Yoga Book Kernel in Verbose Mode..."
+    linux /ANDRID/kernel $CMDLINE console=tty0 DEBUG=2
+    echo "Loading Initrd..."
+    initrd /ANDRID/initrd.img
+}
+
+menuentry "$OS_TITLE - Safe Graphics (nomodeset)" {
     set gfxpayload=keep
     echo "Loading Yoga Book Kernel (nomodeset)..."
-    linux /ANDRID/kernel $CMDLINE nomodeset DEBUG=1
+    linux /ANDRID/kernel $CMDLINE nomodeset console=tty0 DEBUG=1
+    initrd /ANDRID/initrd.img
+}
+
+menuentry "$OS_TITLE - Text Payload" {
+    set gfxpayload=text
+    echo "Loading Yoga Book Kernel (text payload)..."
+    linux /ANDRID/kernel $CMDLINE console=tty0
+    echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
 
