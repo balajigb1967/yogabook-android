@@ -184,22 +184,165 @@ cp -a "$HERE/device/yogabook/halo-keyboard/config/." "$RDK_WORK/system/etc/touch
 cp -a "$HERE/device/yogabook/halo-keyboard/config/." "$RDK_WORK/vendor/etc/touch_keyboard/" 2>/dev/null || true
 cp -a "$HERE/device/yogabook/halo-keyboard/config/." "$RDK_WORK/etc/touch_keyboard/" 2>/dev/null || true
 
+# Copy Yoga Book diagnostics and log capture tool
+mkdir -p "$RDK_WORK/scripts"
+cp -v "$HERE/device/yogabook/diagnostics/yablog.sh" "$RDK_WORK/bin/" 2>/dev/null || true
+cp -v "$HERE/device/yogabook/diagnostics/yablog.sh" "$RDK_WORK/system/bin/" 2>/dev/null || true
+cp -v "$HERE/device/yogabook/diagnostics/yablog.sh" "$RDK_WORK/vendor/bin/" 2>/dev/null || true
+chmod +x "$RDK_WORK"/bin/yablog.sh "$RDK_WORK"/system/bin/yablog.sh "$RDK_WORK"/vendor/bin/yablog.sh 2>/dev/null || true
+
+# Early boot & harddisk detection script in initrd
+cat > "$RDK_WORK/scripts/yogabook-disk-detect.sh" <<'EOF'
+#!/bin/sh
+# Realtime storage scan & boot log capture for Yoga Book flashable media
+
+echo ">>> [YOGABOOK] Hardware & Storage Controller Probing..."
+sleep 1
+
+# List storage devices
+echo ">>> [STORAGE DETECTION]:"
+for b in /sys/class/block/*; do
+    [ -d "$b" ] || continue
+    bn="${b##*/}"
+    case "$bn" in loop*|ram*) continue ;; esac
+    sz=$(cat "$b/size" 2>/dev/null || echo 0)
+    mb=$(( sz * 512 / 1024 / 1024 ))
+    rem=$(cat "$b/removable" 2>/dev/null || echo "?")
+    mod=$(cat "$b/device/name" 2>/dev/null || cat "$b/device/model" 2>/dev/null || echo "Storage")
+    echo "    /dev/$bn: $mod (${mb} MB, removable=$rem)"
+done
+
+# Try locating bootlogs on any mounted partition or attempt mounting boot media
+LOG_DIR=""
+for m in $(awk '{print $2}' /proc/mounts 2>/dev/null); do
+    if [ -d "$m/bootlogs" ] && touch "$m/bootlogs/.t" 2>/dev/null; then
+        rm -f "$m/bootlogs/.t"
+        LOG_DIR="$m/bootlogs"
+        break
+    fi
+done
+
+if [ -z "$LOG_DIR" ]; then
+    mkdir -p /mnt_log
+    for p in /dev/mmcblk*p* /dev/mmcblk[0-9] /dev/sd*[0-9] /dev/sd[a-z]; do
+        [ -b "$p" ] || continue
+        mount -t vfat "$p" /mnt_log 2>/dev/null || mount "$p" /mnt_log 2>/dev/null || continue
+        if [ -d "/mnt_log/bootlogs" ] || [ -d "/mnt_log/ANDRID" ]; then
+            mkdir -p /mnt_log/bootlogs 2>/dev/null
+            if touch /mnt_log/bootlogs/.t 2>/dev/null; then
+                rm -f /mnt_log/bootlogs/.t
+                LOG_DIR="/mnt_log/bootlogs"
+                echo ">>> [LOGGING] Attached boot media log destination: $p -> $LOG_DIR"
+                break
+            fi
+        fi
+        umount /mnt_log 2>/dev/null || true
+    done
+fi
+
+if [ -n "$LOG_DIR" ]; then
+    TS=$(date +%Y%m%d-%H%M%S 2>/dev/null || echo "early")
+    OUT_FILE="$LOG_DIR/harddisk-detection-$TS.txt"
+    {
+        echo "=== Yoga Book Storage & Hardware Enumeration ($TS) ==="
+        echo "--- cmdline ---"
+        cat /proc/cmdline
+        echo "--- DMI ---"
+        for d in product_name product_version sys_vendor board_name bios_version; do
+            echo "$d: $(cat /sys/class/dmi/id/$d 2>/dev/null)"
+        done
+        echo "--- /proc/partitions ---"
+        cat /proc/partitions
+        echo "--- Discovered Disks ---"
+        for b in /sys/class/block/*; do
+            [ -d "$b" ] || continue
+            bn="${b##*/}"
+            echo "Device: $bn (size: $(cat "$b/size" 2>/dev/null), removable: $(cat "$b/removable" 2>/dev/null), model: $(cat "$b/device/name" 2>/dev/null || cat "$b/device/model" 2>/dev/null))"
+        done
+        echo "--- Kernel dmesg (MMC & storage events) ---"
+        dmesg | grep -iE 'mmc|sdhci|sdio|scsi|ata|usb|block'
+        echo "--- Full Kernel dmesg ---"
+        dmesg
+    } > "$OUT_FILE" 2>&1
+    cp -f "$OUT_FILE" "$LOG_DIR/harddisk-detection-latest.txt" 2>/dev/null || true
+    echo ">>> [LOGGING] Boot & harddisk detection log captured to $OUT_FILE"
+    ( dmesg -w >> "$LOG_DIR/dmesg.log" 2>/dev/null ) &
+fi
+EOF
+chmod +x "$RDK_WORK/scripts/yogabook-disk-detect.sh"
+
+# Hook early detection into initrd init
+if [ -f "$RDK_WORK/init" ]; then
+  awk '
+    /^PATH=/ {
+      print;
+      print "[ -x /scripts/yogabook-disk-detect.sh ] && /scripts/yogabook-disk-detect.sh";
+      next;
+    }
+    { print }
+  ' "$RDK_WORK/init" > "$RDK_WORK/init.tmp" && mv "$RDK_WORK/init.tmp" "$RDK_WORK/init"
+  chmod +x "$RDK_WORK/init"
+fi
+
 # Repack initrd.img
 (cd "$RDK_WORK" && find . | cpio -o -H newc 2>/dev/null | gzip -9 > "$STAGE/ANDRID/initrd.img")
 
 # ---------------------------------------------------------------- 6. Setup GRUB EFI Bootloader
-say "Building GRUB EFI Bootloader (BOOTX64.EFI)"
+say "Building GRUB EFI Bootloader (BOOTX64.EFI & BOOTIA32.EFI)"
 cat > "$WORK/grub-standalone-efi.cfg" <<'EOF'
-search --file --no-floppy --set=root /boot/grub/grub.cfg
+set echo=1
+set timeout=5
+set default=0
+
+# Search for configuration across filesystems
+if [ -z "$root" ] || [ ! -f "($root)/boot/grub/grub.cfg" ]; then
+    search --no-floppy --file --set=root /boot/grub/grub.cfg
+fi
+if [ -z "$root" ]; then
+    search --no-floppy --label --set=root YOGABOOK
+fi
+if [ -z "$root" ]; then
+    search --no-floppy --file --set=root /ANDRID/kernel
+fi
+
 set prefix=($root)/boot/grub
-configfile $prefix/grub.cfg
+if [ -f "$prefix/grub.cfg" ]; then
+    configfile "$prefix/grub.cfg"
+elif [ -f "($root)/ANDRID/kernel" ]; then
+    menuentry "Direct Fallback Boot" {
+        set gfxpayload=keep
+        linux ($root)/ANDRID/kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID console=tty0 earlycon=efifb fbcon=rotate:1 video=DSI-1:1200x1920,rotate=90
+        initrd ($root)/ANDRID/initrd.img
+    }
+fi
 EOF
 
+EFI_MODS="fat iso9660 ext2 part_gpt part_msdos normal linux configfile search search_fs_file search_fs_uuid search_label minicmd gzio reboot halt sleep cat echo ls test true help all_video efi_gop efi_uga gfxterm font loadenv"
+
+mkdir -p "$STAGE/EFI/BOOT"
+
+say "Building 64-bit GRUB EFI (BOOTX64.EFI)"
 grub-mkimage -O x86_64-efi -o "$STAGE/EFI/BOOT/BOOTX64.EFI" \
   --config="$WORK/grub-standalone-efi.cfg" -p '/boot/grub' \
-  fat part_gpt part_msdos normal linux configfile search search_fs_file search_label efi_gop efi_uga all_video gfxterm font
+  $EFI_MODS
 
-CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID"
+say "Building 32-bit GRUB EFI (BOOTIA32.EFI) for Cherry Trail mixed-mode/32-bit UEFI"
+if [ -d /usr/lib/grub/i386-efi ]; then
+  grub-mkimage -O i386-efi -o "$STAGE/EFI/BOOT/BOOTIA32.EFI" \
+    --config="$WORK/grub-standalone-efi.cfg" -p '/boot/grub' \
+    $EFI_MODS || true
+fi
+
+# Copy unicode font for gfxterm if available
+mkdir -p "$STAGE/boot/grub/fonts"
+for f in /usr/share/grub/unicode.pf2 /boot/grub/fonts/unicode.pf2; do
+  if [ -f "$f" ]; then
+    cp -v "$f" "$STAGE/boot/grub/fonts/"
+    break
+  fi
+done
+
+CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID console=tty0 console=ttyS0,115200 earlycon=efifb fbcon=rotate:1 video=DSI-1:1200x1920,rotate=90"
 
 if [ -n "$LINEAGE_GSI_URL" ]; then
   OS_TITLE="Yoga Book LineageOS $LINEAGE_VER (x86_64)"
@@ -210,22 +353,46 @@ else
 fi
 
 cat > "$STAGE/boot/grub/grub.cfg" <<EOF
-set timeout=3
+set timeout=5
 set default=0
 
+loadfont unicode || true
 set gfxmode=auto
 set gfxpayload=keep
+terminal_output gfxterm console || true
+
+set menu_color_normal=white/black
+set menu_color_highlight=black/light-gray
 
 menuentry "$OS_TITLE" {
     set gfxpayload=keep
-    linux /ANDRID/kernel $CMDLINE
+    echo "Loading Yoga Book Kernel..."
+    linux /ANDRID/kernel $CMDLINE quiet
+    echo "Loading Initrd (Storage & Halo Keyboard Drivers)..."
     initrd /ANDRID/initrd.img
 }
 
-menuentry "$OS_TITLE (Debug Mode)" {
+menuentry "$OS_TITLE (Verbose / Debug Mode & Hardware Logging)" {
     set gfxpayload=keep
-    linux /ANDRID/kernel $CMDLINE DEBUG=2
+    echo "Loading Yoga Book Kernel in Verbose Debug Mode..."
+    linux /ANDRID/kernel $CMDLINE DEBUG=2 loglevel=7
+    echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
+}
+
+menuentry "$OS_TITLE (Safe Graphics / Fallback VESA)" {
+    set gfxpayload=keep
+    echo "Loading Yoga Book Kernel (nomodeset)..."
+    linux /ANDRID/kernel $CMDLINE nomodeset DEBUG=1
+    initrd /ANDRID/initrd.img
+}
+
+menuentry "Reboot System" {
+    reboot
+}
+
+menuentry "Power Off" {
+    halt
 }
 EOF
 

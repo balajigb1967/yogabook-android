@@ -60,7 +60,7 @@ jobs:
           sudo apt-get install -y \
             build-essential gcc g++ bc bison flex \
             libssl-dev libelf-dev libncurses-dev \
-            xorriso mtools grub-pc-bin grub-efi-amd64-bin \
+            xorriso mtools grub-pc-bin grub-efi-amd64-bin grub-efi-ia32-bin \
             p7zip-full squashfs-tools curl unzip rsync git \
             isolinux syslinux-common
 

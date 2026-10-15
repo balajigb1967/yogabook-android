@@ -97,10 +97,10 @@ grub-mkimage -O i386-pc -o "$WORK/core.img" \
   $MODS
 cat "$GRUB_LIB/boot.img" "$WORK/core.img" > "$WORK/eltorito.img"
 
+mkdir -p "$WORK/isostage"
+cp -a "$STAGE"/. "$WORK/isostage/" 2>/dev/null || true
 mkdir -p "$WORK/isostage/boot/grub"
 cp "$WORK/eltorito.img" "$WORK/isostage/boot/isolinux.bin" 2>/dev/null || true
-cp -a "$STAGE/boot/grub/." "$WORK/isostage/boot/grub/" 2>/dev/null || \
-  mkdir -p "$WORK/isostage/boot/grub"
 cp "$WORK/eltorito.img" "$WORK/isostage/boot/grub/eltorito.img"
 : > "$WORK/isostage/boot/boot.cat"
 
