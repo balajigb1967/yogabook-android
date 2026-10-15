@@ -193,7 +193,7 @@ chmod +x "$RDK_WORK"/bin/yablog.sh "$RDK_WORK"/system/bin/yablog.sh "$RDK_WORK"/
 
 # Early boot & harddisk detection script in initrd
 cat > "$RDK_WORK/scripts/yogabook-disk-detect.sh" <<'EOF'
-#!/bin/sh
+#!/bin/busybox sh
 # Realtime storage scan & boot log capture for Yoga Book flashable media
 
 echo ">>> [YOGABOOK] Hardware & Storage Controller Probing..."
@@ -271,16 +271,121 @@ fi
 EOF
 chmod +x "$RDK_WORK/scripts/yogabook-disk-detect.sh"
 
-# Hook early detection into initrd init
+# Hook detection and robust mounting into initrd init
 if [ -f "$RDK_WORK/init" ]; then
-  awk '
-    /^PATH=/ {
-      print;
-      print "[ -x /scripts/yogabook-disk-detect.sh ] && /scripts/yogabook-disk-detect.sh";
-      next;
-    }
-    { print }
-  ' "$RDK_WORK/init" > "$RDK_WORK/init.tmp" && mv "$RDK_WORK/init.tmp" "$RDK_WORK/init"
+  python3 - <<'PYEOF'
+import os
+init_path = os.environ.get("RDK_WORK", "") + "/init"
+if not os.path.exists(init_path):
+    init_path = "init"
+with open(init_path, "r", encoding="latin1") as f:
+    c = f.read()
+
+# 1. Place yogabook-disk-detect after cttyhack
+anchor = 'exec env HAS_CTTY=Yes setsid cttyhack /bin/sh "$0" "$@"\nfi'
+if anchor in c and "/scripts/yogabook-disk-detect.sh" not in c:
+    c = c.replace(anchor, anchor + '\n\n[ -x /scripts/yogabook-disk-detect.sh ] && /scripts/yogabook-disk-detect.sh\n')
+
+# 2. Patch try_mount to direct-mount vfat/ext4/iso9660 without failing on blkid
+old_try_mount = """try_mount()
+{
+	RW=$1; shift
+	if [ "${ROOT#*:/}" != "$ROOT" ]; then
+		# for NFS roots, use nolock to avoid dependency to portmapper
+		mount -o $RW,noatime,nolock $@
+		return $?
+	fi
+	case $(blkid $1) in
+		*TYPE=*ntfs*)
+			mount.ntfs-3g -o rw,force $@
+			;;
+		*TYPE=*)
+			mount -o $RW,noatime $@
+			;;
+		*)
+			return 1
+			;;
+	esac
+}"""
+
+new_try_mount = """try_mount()
+{
+	RW=$1; shift
+	dev=$1
+	target=$2
+	mount -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
+	mount -t vfat -o $RW,noatime,check=relaxed,utf8 "$dev" "$target" 2>/dev/null && return 0
+	mount -t ext4 -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
+	mount -t iso9660 -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
+	mount.ntfs-3g -o rw,force "$dev" "$target" 2>/dev/null && return 0
+	return 1
+}"""
+c = c.replace(old_try_mount, new_try_mount)
+
+# 3. Parse SRC= from cmdline
+old_cmdline = """for c in `cat /proc/cmdline`; do
+	case $c in
+		iso-scan/filename=*)
+			SRC=iso
+			eval `echo $c | cut -b1-3,18-`
+			;;
+		*)
+			;;
+	esac
+done"""
+
+new_cmdline = """for c in `cat /proc/cmdline`; do
+	case $c in
+		SRC=*)
+			eval $c
+			;;
+		iso-scan/filename=*)
+			SRC=iso
+			eval `echo $c | cut -b1-3,18-`
+			;;
+		*)
+			;;
+	esac
+done
+
+SRC=$(echo "$SRC" | sed 's|^/*||;s|/*$||')"""
+c = c.replace(old_cmdline, new_cmdline)
+
+# 4. Auto-detect directory containing ramdisk.img
+old_ramdisk = """	if [ -e /mnt/$SRC/$RAMDISK ]; then
+		zcat /mnt/$SRC/$RAMDISK | cpio -id > /dev/null
+	elif [ -b /dev/$RAMDISK ]; then
+		zcat /dev/$RAMDISK | cpio -id > /dev/null
+	else
+		return 1
+	fi"""
+
+new_ramdisk = """	if [ -z "$SRC" ] || [ ! -e "/mnt/$SRC/$RAMDISK" ]; then
+		for candidate in ANDRID andrid android Android ANDROID ""; do
+			if [ -n "$candidate" ] && [ -e "/mnt/$candidate/$RAMDISK" ]; then
+				SRC="$candidate"
+				break
+			elif [ -z "$candidate" ] && [ -e "/mnt/$RAMDISK" ]; then
+				SRC=""
+				break
+			fi
+		done
+	fi
+
+	if [ -n "$SRC" ] && [ -e "/mnt/$SRC/$RAMDISK" ]; then
+		zcat "/mnt/$SRC/$RAMDISK" | cpio -id > /dev/null
+	elif [ -e "/mnt/$RAMDISK" ]; then
+		zcat "/mnt/$RAMDISK" | cpio -id > /dev/null
+	elif [ -b "/dev/$RAMDISK" ]; then
+		zcat "/dev/$RAMDISK" | cpio -id > /dev/null
+	else
+		return 1
+	fi"""
+c = c.replace(old_ramdisk, new_ramdisk)
+
+with open(init_path, "w", encoding="latin1") as f:
+    f.write(c)
+PYEOF
   chmod +x "$RDK_WORK/init"
 fi
 
