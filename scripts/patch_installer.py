@@ -190,17 +190,46 @@ def patch_1_install_text(txt: str) -> str:
     else:
         print("  [!] Warning: Congratulations dialog signature not matched, skipping")
 
-    # 7. Mirror EFI bootloader to both /efi/boot and /efi/Android and write robust standalone grub.cfg
-    old_efi_copy = "cp -af grub2/efi/boot/* efi$efidir"
-    new_efi_copy = """cp -af grub2/efi/boot/* efi$efidir
-\t\tmkdir -p efi/efi/boot efi/efi/Android efi/boot efi/Android 2>/dev/null || true
-\t\tcp -af grub2/efi/boot/* efi/efi/boot/ 2>/dev/null || true
-\t\tcp -af grub2/efi/boot/* efi/efi/Android/ 2>/dev/null || true
-\t\tcp -af grub2/efi/boot/* efi/boot/ 2>/dev/null || true
-\t\tcp -af grub2/efi/boot/* efi/Android/ 2>/dev/null || true
-\t\t# Write robust standalone GRUB configuration for eMMC boot
-\t\tmkdir -p efi/boot/grub efi/boot/grub/x86_64-efi efi/boot/grub/i386-efi /hd/boot/grub 2>/dev/null || true
-\t\tcat > /tmp/standalone_grub.cfg << 'EOF_GRUB'
+    # 7. Force clean format of EFI partition to wipe old Bass OS bootloader and write standalone GRUB to all paths
+    old_efi_block = """		until try_mount rw /dev/$boot efi; do
+			dialog --title " Confirm " --defaultno --yesno "\\n Cannot mount /dev/$boot.\\n Do you want to format it?" 8 37
+			[ $? -eq 0 ] && mkdosfs -n EFI /dev/$boot
+		done
+		if [ "$efi" = "32" ]; then
+			grubcfg=efi/boot/grub/i386-efi/grub.cfg
+			bootefi=bootia32.efi
+		else
+			grubcfg=efi/boot/grub/x86_64-efi/grub.cfg
+			bootefi=BOOTx64.EFI
+		fi
+		if [ -d efi/efi/boot -a ! -s efi/efi/boot/android.cfg ]; then
+			efidir=/efi/Android
+		else
+			efidir=/efi/boot
+			rm -rf efi/efi/Android
+		fi
+		mkdir -p `dirname $grubcfg` efi$efidir
+		cp -af grub2/efi/boot/* efi$efidir"""
+
+    new_efi_block = """		# Wipe old Bass OS EFI bootloader and format EFI partition fresh
+		umount /dev/$boot 2>/dev/null || true
+		echo ">>> Wiping old EFI bootloader and formatting clean FAT32 EFI partition..."
+		busybox mkdosfs -F 32 -n "EFI" /dev/$boot || mkdosfs -n "EFI" /dev/$boot || true
+		mkdir -p efi
+		try_mount rw /dev/$boot efi
+		if [ "$efi" = "32" ]; then
+			bootefi=bootia32.efi
+		else
+			bootefi=BOOTx64.EFI
+		fi
+		efidir=/EFI/BOOT
+		mkdir -p efi/EFI/BOOT efi/EFI/boot efi/EFI/Android efi/boot/grub 2>/dev/null || true
+		cp -af grub2/efi/boot/* efi/EFI/BOOT/ 2>/dev/null || true
+		cp -af grub2/efi/boot/* efi/EFI/boot/ 2>/dev/null || true
+		cp -af grub2/efi/boot/* efi/EFI/Android/ 2>/dev/null || true
+		# Write standalone GRUB configuration for Yoga Book eMMC boot
+		mkdir -p efi/boot/grub /hd/boot/grub 2>/dev/null || true
+		cat > /tmp/standalone_grub.cfg << 'EOF_GRUB'
 set timeout=3
 set default=0
 loadfont unicode || true
@@ -220,20 +249,19 @@ menuentry "Yoga Book Android-x86 (Verbose Console)" {
     initrd /initrd.img
 }
 EOF_GRUB
-\t\tcp -f /tmp/standalone_grub.cfg efi/boot/grub/grub.cfg 2>/dev/null || true
-\t\tcp -f /tmp/standalone_grub.cfg efi/boot/grub/x86_64-efi/grub.cfg 2>/dev/null || true
-\t\tcp -f /tmp/standalone_grub.cfg efi/boot/grub/i386-efi/grub.cfg 2>/dev/null || true
-\t\tcp -f /tmp/standalone_grub.cfg efi/EFI/boot/grub.cfg 2>/dev/null || true
-\t\tcp -f /tmp/standalone_grub.cfg efi/EFI/Android/grub.cfg 2>/dev/null || true
-\t\tcp -f /tmp/standalone_grub.cfg /hd/boot/grub/grub.cfg 2>/dev/null || true"""
+		cp -f /tmp/standalone_grub.cfg efi/boot/grub/grub.cfg 2>/dev/null || true
+		cp -f /tmp/standalone_grub.cfg efi/boot/grub/x86_64-efi/grub.cfg 2>/dev/null || true
+		cp -f /tmp/standalone_grub.cfg efi/boot/grub/i386-efi/grub.cfg 2>/dev/null || true
+		cp -f /tmp/standalone_grub.cfg efi/EFI/BOOT/grub.cfg 2>/dev/null || true
+		cp -f /tmp/standalone_grub.cfg efi/EFI/boot/grub.cfg 2>/dev/null || true
+		cp -f /tmp/standalone_grub.cfg efi/EFI/Android/grub.cfg 2>/dev/null || true
+		cp -f /tmp/standalone_grub.cfg /hd/boot/grub/grub.cfg 2>/dev/null || true"""
 
-    if 'cp -af grub2/efi/boot/* efi/Android/' in txt:
-        target = "cp -af grub2/efi/boot/* efi/Android/ 2>/dev/null || true"
-        txt = txt.replace(target, new_efi_copy.replace("cp -af grub2/efi/boot/* efi$efidir\n\t\t", ""))
-        print("  [+] Added standalone grub.cfg generator to existing mirrored EFI copy")
-    elif old_efi_copy in txt:
-        txt = txt.replace(old_efi_copy, new_efi_copy)
-        print("  [+] Patched EFI copy to mirror across all EFI paths and write standalone grub.cfg")
+    if old_efi_block in txt:
+        txt = txt.replace(old_efi_block, new_efi_block)
+        print("  [+] Patched EFI block: force clean format and write standalone bootloader to all paths")
+    else:
+        print("  [!] Warning: EFI block signature not matched, skipping")
 
     return txt
 
