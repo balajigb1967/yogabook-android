@@ -16,8 +16,8 @@ import os
 import gzip
 
 def patch_1_install_text(txt: str) -> str:
-    # 1. Patch install_hd() for robust auto-install targeting and forcing clean ext4 format
-    old_hd = """install_hd()
+    # 1. Patch install_hd() for robust dynamic auto-install targeting and forcing clean ext4 format
+    old_hd_orig = """install_hd()
 {
 	case "$AUTO_INSTALL" in
 		[Uu]*)
@@ -29,9 +29,11 @@ def patch_1_install_text(txt: str) -> str:
 		*)
 			[ -z "$answer" ] && set_answer_if_auto Create
 			;;
-	esac"""
+	esac
 
-    new_hd = """install_hd()
+	select_dev || rebooting"""
+
+    old_hd_prev = """install_hd()
 {
 	case "$AUTO_INSTALL" in
 		[Uu]pdate)
@@ -56,33 +58,131 @@ def patch_1_install_text(txt: str) -> str:
 			fi
 			FORCE_FORMAT=ext4
 			;;
-	esac"""
+	esac
 
-    if old_hd in txt:
-        txt = txt.replace(old_hd, new_hd)
-        print("  [+] Patched install_hd() for unattended partition selection and ext4 clean format")
-    else:
-        print("  [!] Warning: install_hd() signature not matched, skipping")
+	select_dev || rebooting"""
 
-    # 2. Patch format_fs to zero out Bass OS and format with busybox mke2fs
-    if 'cmd="mke2fs -F -L"' in txt:
-        txt = txt.replace('cmd="mke2fs -F -L"', 'echo ">>> Wiping Bass OS..."; busybox dd if=/dev/zero of=/dev/$1 bs=1M count=100 2>/dev/null || true; cmd="busybox mke2fs -F -L"')
-        print("  [+] Patched format_fs() from previous mke2fs to zero-fill wipe and busybox mke2fs")
-    elif 'cmd="mkfs.ext3 -L"' in txt:
-        old_fmt = """	case "$choice" in
+    new_hd = """install_hd()
+{
+	case "$AUTO_INSTALL" in
+		[Uu]pdate)
+			answer=${AUTO_UPDATE:-$(blkid | grep -v loop | grep -v iso9660 | sort | grep Android-x86 | cut -d: -f1 | head -1)}
+			answer=${answer:-$(blkid | grep -v loop | grep -v iso9660 | sort | grep ext4 | cut -d: -f1 | head -1)}
+			[ -b "$answer" -o -b "/dev/$answer" ] && answer=$(basename "$answer") || answer=
+			AUTO_UPDATE=${answer:-$AUTO_UPDATE}
+			FORCE_FORMAT=no
+			;;
+		*)
+			# Determine boot disk to NEVER select or overwrite the boot media (SD card)
+			boot_disk=""
+			if [ -n "$dev" ]; then
+				boot_disk=$(basename "$dev" | sed 's/p[0-9].*//')
+			elif [ -n "$booted_from" ]; then
+				boot_disk=$(echo "$booted_from" | sed 's/p[0-9].*//')
+			fi
+
+			# Determine the 64GB internal eMMC disk (must not be boot disk)
+			emmc_disk=""
+			for d in mmcblk1 mmcblk0 mmcblk2; do
+				[ -d "/sys/block/$d" ] || continue
+				[ -n "$boot_disk" ] && [ "$d" = "$boot_disk" ] && continue
+				emmc_disk="$d"
+				break
+			done
+
+			# Fallback: find disk by size (>50GB = 100000000 512-byte sectors)
+			if [ -z "$emmc_disk" ]; then
+				for d in mmcblk0 mmcblk1 mmcblk2 sda nvme0n1; do
+					[ -d "/sys/block/$d" ] || continue
+					sz=$(cat "/sys/block/$d/size" 2>/dev/null || echo 0)
+					if [ "$sz" -gt 100000000 ]; then
+						emmc_disk="$d"
+						break
+					fi
+				done
+			fi
+			emmc_disk=${emmc_disk:-mmcblk1}
+
+			# Ensure partition 2 exists on eMMC; if not, use whatever non-EFI partition exists or partition 2
+			target_part="${emmc_disk}p2"
+			if [ ! -b "/dev/$target_part" ] && [ ! -d "/sys/block/$emmc_disk/$target_part" ]; then
+				for p in /sys/block/$emmc_disk/${emmc_disk}p*; do
+					[ -d "$p" ] || continue
+					bn=$(basename "$p")
+					case "$bn" in *boot*|*rpmb*|*p1) continue ;; esac
+					target_part="$bn"
+					break
+				done
+			fi
+
+			answer="$target_part"
+			FORCE_FORMAT=ext4
+			echo "=========================================================="
+			echo ">>> [YOGABOOK AUTO-INSTALLER] Target internal eMMC: /dev/$answer"
+			echo ">>> [YOGABOOK AUTO-INSTALLER] Boot media detected: /dev/$boot_disk"
+			echo "=========================================================="
+			;;
+	esac
+
+	if [ -n "$AUTO_INSTALL" ] && [ -n "$answer" ]; then
+		choice="$answer"
+	else
+		select_dev || rebooting
+	fi"""
+
+    if old_hd_orig in txt:
+        txt = txt.replace(old_hd_orig, new_hd)
+        print("  [+] Patched install_hd() from original for unattended partition selection and bypass")
+    elif old_hd_prev in txt:
+        txt = txt.replace(old_hd_prev, new_hd)
+        print("  [+] Patched install_hd() from previous version for unattended partition selection and bypass")
+    elif 'install_hd()' in txt:
+        # Fallback to replacing just case block
+        txt = txt.replace('select_dev || rebooting', 'if [ -n "$AUTO_INSTALL" ] && [ -n "$answer" ]; then choice="$answer"; else select_dev || rebooting; fi')
+        print("  [+] Patched select_dev || rebooting bypass")
+
+    # 2. Patch format_fs to zero out Bass OS and format cleanly with busybox mke2fs
+    old_fmt_orig = """format_fs()
+{
+	local cmd
+	echo -e '"Do not re-format" ""\\next4 ""\\nntfs ""\\nfat32 ""' > $menufile
+	set_answer_if_auto $FORCE_FORMAT
+	choose "Choose filesystem" "Please select a filesystem to format $1:"
+	case "$choice" in
 		ext4)
 			cmd="mkfs.ext3 -L"
 			;;"""
-        new_fmt = """	case "$choice" in
+
+    new_fmt_clean = """format_fs()
+{
+	local cmd
+	if [ -n "$AUTO_INSTALL" ]; then
+		choice="ext4"
+	else
+		echo -e '"Do not re-format" ""\\next4 ""\\nntfs ""\\nfat32 ""' > $menufile
+		set_answer_if_auto $FORCE_FORMAT
+		choose "Choose filesystem" "Please select a filesystem to format $1:"
+	fi
+	case "$choice" in
 		ext4)
 			umount /dev/$1 2>/dev/null || true
-			echo ">>> Wiping Bass OS..."; busybox dd if=/dev/zero of=/dev/$1 bs=1M count=100 2>/dev/null || true
-			cmd="busybox mke2fs -F -L"
+			echo "=========================================================="
+			echo ">>> [YOGABOOK AUTO-INSTALLER] Wiping previous OS (BlissOS / BassOS) from /dev/$1..."
+			busybox dd if=/dev/zero of=/dev/$1 bs=1M count=100 2>/dev/null || true
+			echo ">>> [YOGABOOK AUTO-INSTALLER] Formatting /dev/$1 as ext4..."
+			echo "=========================================================="
+			busybox mke2fs -F -L Android-x86 /dev/$1 || mke2fs -F -L Android-x86 /dev/$1 || true
+			if [ -n "$AUTO_INSTALL" ]; then
+				return 0
+			fi
+			cmd=""
 			;;"""
-        txt = txt.replace(old_fmt, new_fmt)
-        print("  [+] Patched format_fs() to zero-fill wipe and busybox mke2fs")
-    else:
-        print("  [!] Warning: format_fs() signature not matched, skipping")
+
+    if old_fmt_orig in txt:
+        txt = txt.replace(old_fmt_orig, new_fmt_clean)
+        print("  [+] Patched format_fs() from original to zero-fill wipe and clean auto-format")
+    elif 'cmd="mke2fs -F -L"' in txt or 'echo ">>> Wiping Bass OS..."' in txt:
+        print("  [+] format_fs() already contains zero-fill wipe logic")
 
     # 3. Patch install_to() to prevent AUTO_UPDATE from disabling ext4 format on auto-install
     old_force = '[ -n "$AUTO_UPDATE" ] && FORCE_FORMAT=no || FORCE_FORMAT=ext4'
@@ -236,17 +336,31 @@ loadfont unicode || true
 set gfxmode=auto
 set gfxpayload=keep
 terminal_output gfxterm console || true
+
+search --no-floppy --file --set=root /kernel
+if [ -z "$root" ]; then
+    search --no-floppy --file --set=root /android-9.0-r2/kernel
+fi
+
 menuentry "Yoga Book Android-x86" {
     set gfxpayload=keep
-    search --no-floppy --set=root --file /kernel || search --no-floppy --set=root --file /android-9.0-r2/kernel
-    linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
-    initrd /initrd.img
+    if [ -f /kernel ]; then
+        linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
+        initrd /initrd.img
+    else
+        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 SRC=/android-9.0-r2 quiet
+        initrd /android-9.0-r2/initrd.img
+    fi
 }
 menuentry "Yoga Book Android-x86 (Verbose Console)" {
     set gfxpayload=keep
-    search --no-floppy --set=root --file /kernel || search --no-floppy --set=root --file /android-9.0-r2/kernel
-    linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
-    initrd /initrd.img
+    if [ -f /kernel ]; then
+        linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
+        initrd /initrd.img
+    else
+        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 SRC=/android-9.0-r2 console=tty0 DEBUG=2
+        initrd /android-9.0-r2/initrd.img
+    fi
 }
 EOF_GRUB
 		cp -f /tmp/standalone_grub.cfg efi/boot/grub/grub.cfg 2>/dev/null || true

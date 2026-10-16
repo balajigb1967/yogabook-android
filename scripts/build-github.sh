@@ -492,29 +492,28 @@ fi
 # ---------------------------------------------------------------- 6. Setup GRUB EFI Bootloader
 say "Building GRUB EFI Bootloader (BOOTX64.EFI & BOOTIA32.EFI)"
 cat > "$WORK/grub-standalone-efi.cfg" <<'EOF'
-set echo=1
-set timeout=5
+set echo=0
+set timeout=3
 set default=0
 
-# Search for configuration across filesystems (prioritize external media)
-if [ -z "$root" ] || [ ! -f "($root)/boot/grub/grub.cfg" ]; then
-    search --no-floppy --label --set=root YOGABOOK
-fi
-if [ -z "$root" ] || [ ! -f "($root)/boot/grub/grub.cfg" ]; then
-    search --no-floppy --file --set=root /ANDRID/kernel
-fi
-if [ -z "$root" ] || [ ! -f "($root)/boot/grub/grub.cfg" ]; then
-    search --no-floppy --file --set=root /boot/grub/grub.cfg
+search --no-floppy --file --set=cfg_root /EFI/BOOT/grub.cfg
+if [ -n "$cfg_root" ]; then
+    set prefix=($cfg_root)/EFI/BOOT
+    configfile ($cfg_root)/EFI/BOOT/grub.cfg
 fi
 
-set prefix=($root)/boot/grub
-if [ -f "$prefix/grub.cfg" ]; then
-    configfile "$prefix/grub.cfg"
-elif [ -f "($root)/ANDRID/kernel" ]; then
-    menuentry "Direct Fallback Boot" {
+search --no-floppy --file --set=cfg_root2 /boot/grub/grub.cfg
+if [ -n "$cfg_root2" ]; then
+    set prefix=($cfg_root2)/boot/grub
+    configfile ($cfg_root2)/boot/grub/grub.cfg
+fi
+
+search --no-floppy --file --set=root /kernel
+if [ -n "$root" ]; then
+    menuentry "Yoga Book Android-x86" {
         set gfxpayload=keep
-        linux ($root)/ANDRID/kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID quiet
-        initrd ($root)/ANDRID/initrd.img
+        linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
+        initrd /initrd.img
     }
 fi
 EOF
