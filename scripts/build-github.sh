@@ -492,15 +492,15 @@ set echo=1
 set timeout=5
 set default=0
 
-# Search for configuration across filesystems
+# Search for configuration across filesystems (prioritize external media)
 if [ -z "$root" ] || [ ! -f "($root)/boot/grub/grub.cfg" ]; then
-    search --no-floppy --file --set=root /boot/grub/grub.cfg
-fi
-if [ -z "$root" ]; then
     search --no-floppy --label --set=root YOGABOOK
 fi
-if [ -z "$root" ]; then
+if [ -z "$root" ] || [ ! -f "($root)/boot/grub/grub.cfg" ]; then
     search --no-floppy --file --set=root /ANDRID/kernel
+fi
+if [ -z "$root" ] || [ ! -f "($root)/boot/grub/grub.cfg" ]; then
+    search --no-floppy --file --set=root /boot/grub/grub.cfg
 fi
 
 set prefix=($root)/boot/grub
@@ -562,26 +562,18 @@ terminal_output gfxterm console || true
 set menu_color_normal=white/black
 set menu_color_highlight=black/light-gray
 
-menuentry "$OS_TITLE - Auto-Install to eMMC (mmcblk0p2) [Default - No Keyboard Required]" {
+menuentry "$OS_TITLE - Standard Live [Default]" {
+    set gfxpayload=keep
+    echo "Loading Yoga Book Kernel in Live Mode..."
+    linux /ANDRID/kernel $CMDLINE quiet
+    echo "Loading Initrd..."
+    initrd /ANDRID/initrd.img
+}
+
+menuentry "$OS_TITLE - Auto-Install to eMMC (mmcblk0p2) [Wipes Bass OS]" {
     set gfxpayload=keep
     echo "Loading Android-x86 Unattended Installer..."
     linux /ANDRID/kernel $CMDLINE INSTALL=1 AUTO_INSTALL=auto
-    echo "Loading Initrd..."
-    initrd /ANDRID/initrd.img
-}
-
-menuentry "$OS_TITLE - Auto-Install with Clean Format (mmcblk0p2) [No Keyboard Required]" {
-    set gfxpayload=keep
-    echo "Loading Android-x86 Clean Format Installer..."
-    linux /ANDRID/kernel $CMDLINE INSTALL=1 AUTO_INSTALL=force_format
-    echo "Loading Initrd..."
-    initrd /ANDRID/initrd.img
-}
-
-menuentry "$OS_TITLE - Standard Live (Boot without installing)" {
-    set gfxpayload=keep
-    echo "Loading Yoga Book Kernel..."
-    linux /ANDRID/kernel $CMDLINE quiet
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
