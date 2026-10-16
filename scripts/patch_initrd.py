@@ -37,9 +37,53 @@ def patch_initrd(initrd_path: str):
             new_str = 'try_mount rw "$dev" /mnt || try_mount ro "$dev" /mnt || return 1'
             if old_str in txt:
                 txt = txt.replace(old_str, new_str)
+                print("  [+] Patched init: try_mount rw directly for persistent storage")
+                patched += 1
+
+            # Patch check_root to strictly require install.img if INSTALL is set (rejects eMMC)
+            old_cr_end = """\tmkdir -p mnt
+\techo " found at $1"
+\trm /sbin/mke2fs
+\thash -r
+}"""
+
+            new_cr_end = """\tif [ -n "$INSTALL" ]; then
+\t\tif [ ! -f "/mnt/$SRC/install.img" ] && [ ! -f "/mnt/install.img" ] && [ ! -f "/mnt/ANDRID/install.img" ]; then
+\t\t\tumount system 2>/dev/null
+\t\t\tmountpoint -q /sfs && umount /sfs 2>/dev/null
+\t\t\tumount /mnt 2>/dev/null
+\t\t\trm -rf *
+\t\t\treturn 1
+\t\tfi
+\tfi
+\tmkdir -p mnt
+\techo " found at $1"
+\trm /sbin/mke2fs
+\thash -r
+}"""
+            if old_cr_end in txt:
+                txt = txt.replace(old_cr_end, new_cr_end)
+                print("  [+] Patched init: check_root strictly requires install.img on installer partition")
+                patched += 1
+
+            # Ensure block scan loop checks SD card devices specifically
+            old_dev_loop = 'for device in ${ROOT:-/dev/[hmnsv][dmrv][0-9a-z]*}; do'
+            new_dev_loop = 'for device in ${ROOT:-/dev/mmcblk0p* /dev/mmcblk1p* /dev/sd*[0-9] /dev/[hmnsv][dmrv][0-9a-z]*}; do'
+            if old_dev_loop in txt:
+                txt = txt.replace(old_dev_loop, new_dev_loop)
+                print("  [+] Patched init: prioritize MMC & SD card block partitions in detection loop")
+                patched += 1
+
+            content = txt.encode('latin1')
+            hdr[54:62] = f'{len(content):08X}'.encode('ascii')
+
+        elif name == 'scripts/yogabook-disk-detect.sh':
+            txt = content.decode('latin1')
+            if 'YOGABOOK_DETECTED' not in txt:
+                txt = '#!/bin/busybox sh\n[ -n "$YOGABOOK_DETECTED" ] && return 0 2>/dev/null || true\nexport YOGABOOK_DETECTED=1\n' + txt.lstrip('#!/bin/busybox sh\n')
                 content = txt.encode('latin1')
                 hdr[54:62] = f'{len(content):08X}'.encode('ascii')
-                print("  [+] Patched init: try_mount rw directly for persistent storage")
+                print("  [+] Patched yogabook-disk-detect.sh: single run guard to prevent duplicate screen outputs")
                 patched += 1
 
         elif name == 'scripts/2-mount':

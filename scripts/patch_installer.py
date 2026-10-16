@@ -346,20 +346,20 @@ fi
 menuentry "Yoga Book Android-x86" {
     set gfxpayload=keep
     if [ -f /android-9.0-r2/kernel ]; then
-        linux /android-9.0-r2/kernel androidboot.hardware=android_x86_64 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
+        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
         initrd /android-9.0-r2/initrd.img
     else
-        linux /kernel androidboot.hardware=android_x86_64 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
+        linux /kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
         initrd /initrd.img
     fi
 }
 menuentry "Yoga Book Android-x86 (Verbose Console)" {
     set gfxpayload=keep
     if [ -f /android-9.0-r2/kernel ]; then
-        linux /android-9.0-r2/kernel androidboot.hardware=android_x86_64 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
+        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
         initrd /android-9.0-r2/initrd.img
     else
-        linux /kernel androidboot.hardware=android_x86_64 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
+        linux /kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
         initrd /initrd.img
     fi
 }
