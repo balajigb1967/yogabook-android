@@ -544,7 +544,7 @@ for f in /usr/share/grub/unicode.pf2 /boot/grub/fonts/unicode.pf2; do
   fi
 done
 
-CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID ROOT=/dev/mmcblk1p1 sdhci.debug_quirks2=0x04"
+CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID ROOT=\"/dev/mmcblk0p1 /dev/mmcblk1p1 /dev/sda1\" sdhci.debug_quirks2=0x04"
 
 if [ -n "$LINEAGE_GSI_URL" ]; then
   OS_TITLE="Yoga Book LineageOS $LINEAGE_VER (x86_64)"

@@ -263,6 +263,26 @@ EOF_GRUB
     else:
         print("  [!] Warning: EFI block signature not matched, skipping")
 
+    # 8. Delete BlissOS, BassOS, and old Android entries from UEFI NVRAM so BlissOS never boots
+    old_efimgr = """		# Checking for old EFI entries, removing them and adding new depending on bitness
+		efibootmgr | grep -Eo ".{0,6}Android-x86" | cut -c1-4 > /tmp/efientries
+		if [ -s /tmp/efientries ]; then
+			set_answer_if_auto 1
+			adialog --title " Question " --yesno "\\nEFI boot entries for previous Android-x86 installations were found.\\n\\nDo you wish to delete them?" 10 61
+			[ $? -eq 0 ] && while read entry; do efibootmgr -Bb "$entry" > /dev/tty4 2>&1; done < /tmp/efientries
+		fi"""
+
+    new_efimgr = """		# Delete old BlissOS / BassOS / Android entries from UEFI NVRAM so only clean Android remains
+		for b in $(efibootmgr 2>/dev/null | grep -iE "bliss|bass|android" | awk '{print $1}' | sed 's/Boot//; s/\\*//'); do
+			efibootmgr -b "$b" -B > /dev/null 2>&1 || true
+		done"""
+
+    if old_efimgr in txt:
+        txt = txt.replace(old_efimgr, new_efimgr)
+        print("  [+] Patched efibootmgr to purge BlissOS and BassOS from UEFI NVRAM")
+    else:
+        print("  [!] Warning: efibootmgr block not matched, skipping")
+
     return txt
 
 
