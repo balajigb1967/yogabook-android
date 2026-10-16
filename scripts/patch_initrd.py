@@ -40,6 +40,30 @@ def patch_initrd(initrd_path: str):
                 print("  [+] Patched init: try_mount rw directly for persistent storage")
                 patched += 1
 
+            old_tm = """	mount -t vfat -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
+	mount -t ext4 -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0"""
+            new_tm = """	mount -t vfat -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
+	mount -t vfat -o ro,noatime,check=relaxed,utf8 "$dev" "$target" 2>/dev/null && return 0
+	mount -t vfat -o ro,noatime "$dev" "$target" 2>/dev/null && return 0
+	mount -t ext4 -o $RW,noatime "$dev" "$target" 2>/dev/null && return 0
+	mount -t ext4 -o ro,noatime "$dev" "$target" 2>/dev/null && return 0"""
+            if old_tm in txt:
+                txt = txt.replace(old_tm, new_tm)
+                print("  [+] Patched init: try_mount with ro fallbacks for dirty vfat/ext4")
+                patched += 1
+
+            # Patch check_root beginning to handle /mnt_log move/lazy unmount
+            old_cr_start = 'umount /mnt_log 2>/dev/null || true'
+            new_cr_start = """if grep -q "$1 /mnt_log" /proc/mounts 2>/dev/null; then
+\t\tmount --move /mnt_log /mnt 2>/dev/null || umount -l /mnt_log 2>/dev/null || true
+\telse
+\t\tumount -l /mnt_log 2>/dev/null || true
+\tfi"""
+            if old_cr_start in txt:
+                txt = txt.replace(old_cr_start, new_cr_start, 1)
+                print("  [+] Patched init: check_root handles /mnt_log via mount-move and lazy unmount")
+                patched += 1
+
             # Patch check_root to strictly require install.img if INSTALL is set (rejects eMMC)
             old_cr_end = """\tmkdir -p mnt
 \techo " found at $1"
@@ -79,12 +103,15 @@ def patch_initrd(initrd_path: str):
 
         elif name == 'scripts/yogabook-disk-detect.sh':
             txt = content.decode('latin1')
+            if 'umount /mnt_log 2>/dev/null' in txt and 'umount -l /mnt_log' not in txt:
+                txt = txt.replace('umount /mnt_log 2>/dev/null', 'sync; umount -l /mnt_log 2>/dev/null || umount /mnt_log 2>/dev/null')
+                patched += 1
             if 'YOGABOOK_DETECTED' not in txt:
                 txt = '#!/bin/busybox sh\n[ -n "$YOGABOOK_DETECTED" ] && return 0 2>/dev/null || true\nexport YOGABOOK_DETECTED=1\n' + txt.lstrip('#!/bin/busybox sh\n')
-                content = txt.encode('latin1')
-                hdr[54:62] = f'{len(content):08X}'.encode('ascii')
                 print("  [+] Patched yogabook-disk-detect.sh: single run guard to prevent duplicate screen outputs")
                 patched += 1
+            content = txt.encode('latin1')
+            hdr[54:62] = f'{len(content):08X}'.encode('ascii')
 
         elif name == 'scripts/2-mount':
             txt = content.decode('latin1')
