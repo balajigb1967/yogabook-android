@@ -13,25 +13,22 @@ NEW_SCRIPT = """set echo=0
 set timeout=3
 set default=0
 
-search --no-floppy --file --set=cfg_root /EFI/BOOT/grub.cfg
-if [ -n "$cfg_root" ]; then
-    set prefix=($cfg_root)/EFI/BOOT
-    configfile ($cfg_root)/EFI/BOOT/grub.cfg
+search --no-floppy --label --set=r YOGABOOK
+if [ -n "$r" ]; then
+    set prefix=($r)/boot/grub
+    configfile ($r)/boot/grub/grub.cfg
 fi
 
-search --no-floppy --file --set=cfg_root2 /boot/grub/grub.cfg
-if [ -n "$cfg_root2" ]; then
-    set prefix=($cfg_root2)/boot/grub
-    configfile ($cfg_root2)/boot/grub/grub.cfg
+search --no-floppy --file --set=r /EFI/BOOT/grub.cfg
+if [ -n "$r" ]; then
+    set prefix=($r)/EFI/BOOT
+    configfile ($r)/EFI/BOOT/grub.cfg
 fi
 
-search --no-floppy --file --set=root /kernel
-if [ -n "$root" ]; then
-    menuentry "Yoga Book Android-x86" {
-        set gfxpayload=keep
-        linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
-        initrd /initrd.img
-    }
+search --no-floppy --file --set=r /boot/grub/grub.cfg
+if [ -n "$r" ]; then
+    set prefix=($r)/boot/grub
+    configfile ($r)/boot/grub/grub.cfg
 fi
 """
 
@@ -48,19 +45,12 @@ def patch_efi(path: str):
     with open(path, "rb") as f:
         data = bytearray(f.read())
     
-    idx = data.find(b"set echo=1")
+    idx = data.find(b"set echo=")
     if idx == -1:
-        print(f"Could not find 'set echo=1' in {path}")
+        print(f"Could not find 'set echo=' in {path}")
         return
     
-    end = data.find(b"}\nfi\n", idx)
-    if end == -1:
-        print(f"Could not find end marker '}}\\nfi\\n' in {path}")
-        return
-    end += 5
-    old_len = end - idx
-    if old_len != TARGET_LEN:
-        print(f"Warning: old script length is {old_len}, expected {TARGET_LEN}")
+    data[idx:idx + TARGET_LEN] = PADDED_SCRIPT.encode("latin1")
     
     data[idx:idx + TARGET_LEN] = PADDED_SCRIPT.encode("latin1")
     with open(path, "wb") as f:
