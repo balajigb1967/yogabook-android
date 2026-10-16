@@ -190,17 +190,50 @@ def patch_1_install_text(txt: str) -> str:
     else:
         print("  [!] Warning: Congratulations dialog signature not matched, skipping")
 
-    # 7. Mirror EFI bootloader to both /efi/boot and /efi/Android so old NVRAM entries boot Android-x86
+    # 7. Mirror EFI bootloader to both /efi/boot and /efi/Android and write robust standalone grub.cfg
     old_efi_copy = "cp -af grub2/efi/boot/* efi$efidir"
     new_efi_copy = """cp -af grub2/efi/boot/* efi$efidir
 \t\tmkdir -p efi/efi/boot efi/efi/Android efi/boot efi/Android 2>/dev/null || true
 \t\tcp -af grub2/efi/boot/* efi/efi/boot/ 2>/dev/null || true
 \t\tcp -af grub2/efi/boot/* efi/efi/Android/ 2>/dev/null || true
 \t\tcp -af grub2/efi/boot/* efi/boot/ 2>/dev/null || true
-\t\tcp -af grub2/efi/boot/* efi/Android/ 2>/dev/null || true"""
-    if old_efi_copy in txt:
+\t\tcp -af grub2/efi/boot/* efi/Android/ 2>/dev/null || true
+\t\t# Write robust standalone GRUB configuration for eMMC boot
+\t\tmkdir -p efi/boot/grub efi/boot/grub/x86_64-efi efi/boot/grub/i386-efi /hd/boot/grub 2>/dev/null || true
+\t\tcat > /tmp/standalone_grub.cfg << 'EOF_GRUB'
+set timeout=3
+set default=0
+loadfont unicode || true
+set gfxmode=auto
+set gfxpayload=keep
+terminal_output gfxterm console || true
+menuentry "Yoga Book Android-x86" {
+    set gfxpayload=keep
+    search --no-floppy --set=root --file /kernel || search --no-floppy --set=root --file /android-9.0-r2/kernel
+    linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
+    initrd /initrd.img
+}
+menuentry "Yoga Book Android-x86 (Verbose Console)" {
+    set gfxpayload=keep
+    search --no-floppy --set=root --file /kernel || search --no-floppy --set=root --file /android-9.0-r2/kernel
+    linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
+    initrd /initrd.img
+}
+EOF_GRUB
+\t\tcp -f /tmp/standalone_grub.cfg efi/boot/grub/grub.cfg 2>/dev/null || true
+\t\tcp -f /tmp/standalone_grub.cfg efi/boot/grub/x86_64-efi/grub.cfg 2>/dev/null || true
+\t\tcp -f /tmp/standalone_grub.cfg efi/boot/grub/i386-efi/grub.cfg 2>/dev/null || true
+\t\tcp -f /tmp/standalone_grub.cfg efi/EFI/boot/grub.cfg 2>/dev/null || true
+\t\tcp -f /tmp/standalone_grub.cfg efi/EFI/Android/grub.cfg 2>/dev/null || true
+\t\tcp -f /tmp/standalone_grub.cfg /hd/boot/grub/grub.cfg 2>/dev/null || true"""
+
+    if 'cp -af grub2/efi/boot/* efi/Android/' in txt:
+        target = "cp -af grub2/efi/boot/* efi/Android/ 2>/dev/null || true"
+        txt = txt.replace(target, new_efi_copy.replace("cp -af grub2/efi/boot/* efi$efidir\n\t\t", ""))
+        print("  [+] Added standalone grub.cfg generator to existing mirrored EFI copy")
+    elif old_efi_copy in txt:
         txt = txt.replace(old_efi_copy, new_efi_copy)
-        print("  [+] Patched EFI copy to mirror across all EFI paths")
+        print("  [+] Patched EFI copy to mirror across all EFI paths and write standalone grub.cfg")
 
     return txt
 
@@ -223,21 +256,36 @@ def patch_install_img(input_img_path: str, output_img_path: str):
             break
         hdr = bytearray(raw[pos:pos+110])
         namesize = int(hdr[94:102], 16)
-        filesize = int(hdr[54:62], 16)
+        raw_filesize = int(hdr[54:62], 16)
         name_start = pos + 110
         name = raw[name_start:name_start + namesize - 1].decode('latin1')
         name_pad = (4 - ((110 + namesize) % 4)) % 4
         file_start = name_start + namesize + name_pad
-        file_pad = (4 - (filesize % 4)) % 4
-        content = raw[file_start:file_start + filesize]
+        raw_file_pad = (4 - (raw_filesize % 4)) % 4
+        content = raw[file_start:file_start + raw_filesize]
 
         if name == 'scripts/1-install':
             txt = content.decode('latin1')
             patched_txt = patch_1_install_text(txt)
             content = patched_txt.encode('latin1')
-            filesize = len(content)
-            hdr[54:62] = f'{filesize:08X}'.encode('ascii')
+            hdr[54:62] = f'{len(content):08X}'.encode('ascii')
             patched_count += 1
+        elif name in ('grub2/efi/boot/BOOTx64.EFI', 'grub2/efi/boot/grubx64.efi'):
+            efi_src = 'D:/EFI/BOOT/BOOTX64.EFI'
+            if os.path.exists(efi_src):
+                with open(efi_src, 'rb') as f_efi:
+                    content = f_efi.read()
+                hdr[54:62] = f'{len(content):08X}'.encode('ascii')
+                print(f"  [+] Replaced {name} with standalone Yoga Book BOOTX64.EFI ({len(content)} bytes)")
+                patched_count += 1
+        elif name == 'grub2/efi/boot/bootia32.efi':
+            efi_src = 'D:/EFI/BOOT/BOOTIA32.EFI'
+            if os.path.exists(efi_src):
+                with open(efi_src, 'rb') as f_efi:
+                    content = f_efi.read()
+                hdr[54:62] = f'{len(content):08X}'.encode('ascii')
+                print(f"  [+] Replaced {name} with standalone Yoga Book BOOTIA32.EFI ({len(content)} bytes)")
+                patched_count += 1
 
         entries.append({
             'hdr': hdr,
@@ -247,7 +295,7 @@ def patch_install_img(input_img_path: str, output_img_path: str):
 
         if name == 'TRAILER!!!':
             break
-        pos = file_start + filesize + file_pad
+        pos = file_start + raw_filesize + raw_file_pad
 
     print(f"Parsed {len(entries)} CPIO entries (patched {patched_count} files).")
 
