@@ -408,7 +408,11 @@ old_ramdisk = """	if [ -e /mnt/$SRC/$RAMDISK ]; then
 		return 1
 	fi"""
 
-new_ramdisk = """	if [ -z "$SRC" ] || [ ! -e "/mnt/$SRC/$RAMDISK" ]; then
+new_ramdisk = """	if [ -n "$SRC" ]; then
+		if [ ! -e "/mnt/$SRC/$RAMDISK" ]; then
+			return 1
+		fi
+	else
 		for candidate in ANDRID andrid android Android ANDROID ""; do
 			if [ -n "$candidate" ] && [ -e "/mnt/$candidate/$RAMDISK" ]; then
 				SRC="$candidate"
@@ -459,7 +463,7 @@ new_loop = """while :; do
 	done
 	mdev -s 2>/dev/null
 
-	for device in ${ROOT:-/dev/[hmnsv][dmrv][0-9a-z]*}; do
+	for device in ${ROOT:-/dev/mmcblk1p* /dev/sd*[0-9] /dev/[hmnsv][dmrv][0-9a-z]*}; do
 		check_root $device && break 2
 		mountpoint -q /mnt && umount /mnt
 	done
