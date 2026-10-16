@@ -566,18 +566,18 @@ terminal_output gfxterm console || true
 set menu_color_normal=white/black
 set menu_color_highlight=black/light-gray
 
-menuentry "$OS_TITLE - Standard Live [Default]" {
+menuentry "$OS_TITLE - Auto-Install to eMMC (mmcblk0p2) [Wipes Bass OS - Default]" {
     set gfxpayload=keep
-    echo "Loading Yoga Book Kernel in Live Mode..."
-    linux /ANDRID/kernel $CMDLINE quiet
+    echo "Loading Android-x86 Unattended Installer..."
+    linux /ANDRID/kernel $CMDLINE INSTALL=1 AUTO_INSTALL=auto
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
 
-menuentry "$OS_TITLE - Auto-Install to eMMC (mmcblk0p2) [Wipes Bass OS]" {
+menuentry "$OS_TITLE - Standard Live" {
     set gfxpayload=keep
-    echo "Loading Android-x86 Unattended Installer..."
-    linux /ANDRID/kernel $CMDLINE INSTALL=1 AUTO_INSTALL=auto
+    echo "Loading Yoga Book Kernel in Live Mode..."
+    linux /ANDRID/kernel $CMDLINE quiet
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
