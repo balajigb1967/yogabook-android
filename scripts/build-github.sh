@@ -152,6 +152,13 @@ for f in gearlock install.img ramdisk.img; do
   fi
 done
 
+# Patch install.img for unattended installation on devices without physical keyboards
+if [ -f "$STAGE/ANDRID/install.img" ] && [ -f "$HERE/scripts/patch_installer.py" ]; then
+  say "Patching install.img for unattended Yoga Book installer support"
+  python3 "$HERE/scripts/patch_installer.py" "$STAGE/ANDRID/install.img" "$STAGE/ANDRID/install.img.new"
+  mv -f "$STAGE/ANDRID/install.img.new" "$STAGE/ANDRID/install.img"
+fi
+
 # Integrate custom modules into initrd
 say "Repacking initrd with Yoga Book modules and Halo Keyboard files"
 export RDK_WORK="$WORK/rdk_work"
@@ -555,18 +562,34 @@ terminal_output gfxterm console || true
 set menu_color_normal=white/black
 set menu_color_highlight=black/light-gray
 
-menuentry "$OS_TITLE - Install to Disk (eMMC) [Default]" {
+menuentry "$OS_TITLE - Auto-Install to eMMC (mmcblk0p2) [Default - No Keyboard Required]" {
     set gfxpayload=keep
-    echo "Loading Android-x86 Installer..."
-    linux /ANDRID/kernel $CMDLINE INSTALL=1
+    echo "Loading Android-x86 Unattended Installer..."
+    linux /ANDRID/kernel $CMDLINE INSTALL=1 AUTO_INSTALL=auto
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
 
-menuentry "$OS_TITLE - Standard Live" {
+menuentry "$OS_TITLE - Auto-Install with Clean Format (mmcblk0p2) [No Keyboard Required]" {
+    set gfxpayload=keep
+    echo "Loading Android-x86 Clean Format Installer..."
+    linux /ANDRID/kernel $CMDLINE INSTALL=1 AUTO_INSTALL=force_format
+    echo "Loading Initrd..."
+    initrd /ANDRID/initrd.img
+}
+
+menuentry "$OS_TITLE - Standard Live (Boot without installing)" {
     set gfxpayload=keep
     echo "Loading Yoga Book Kernel..."
     linux /ANDRID/kernel $CMDLINE quiet
+    echo "Loading Initrd..."
+    initrd /ANDRID/initrd.img
+}
+
+menuentry "$OS_TITLE - Interactive Manual Installer (Requires USB Keyboard)" {
+    set gfxpayload=keep
+    echo "Loading Android-x86 Interactive Installer..."
+    linux /ANDRID/kernel $CMDLINE INSTALL=1
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
