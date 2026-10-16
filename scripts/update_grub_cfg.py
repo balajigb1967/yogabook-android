@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-update_grub_cfg.py - Updates grub.cfg on D: to include explicit search commands
-so GRUB always locates /ANDRID/kernel before trying to load it.
+update_grub_cfg.py - Updates grub.cfg on D: with all Yoga Book hardware parameters
+including DRM hardware acceleration (HWC=drm GRALLOC=gbm) and software rendering fallback.
 """
 
 CFG = """set timeout=5
@@ -21,16 +21,25 @@ menuentry "Yoga Book Android-x86 - Auto-Install to eMMC (Kernel 7.2 Mainline - D
     set gfxpayload=keep
     search --no-floppy --file --set=root /ANDRID/kernel-7.2
     echo "Loading Yoga Book Kernel 7.2 Unattended Installer..."
-    linux /ANDRID/kernel-7.2 androidboot.hardware=android_x86 video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID sdhci.debug_quirks2=0x04 INSTALL=1 AUTO_INSTALL=auto
+    linux /ANDRID/kernel-7.2 androidboot.hardware=android_x86 video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 HWC=drm GRALLOC=gbm ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID sdhci.debug_quirks2=0x04 INSTALL=1 AUTO_INSTALL=auto
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }
 
-menuentry "Yoga Book Android-x86 - Live Mode (Kernel 7.2 Mainline)" {
+menuentry "Yoga Book Android-x86 - Live Mode (Kernel 7.2 Mainline - Hardware Accel)" {
     set gfxpayload=keep
     search --no-floppy --file --set=root /ANDRID/kernel-7.2
     echo "Loading Yoga Book Kernel 7.2 Live Mode..."
-    linux /ANDRID/kernel-7.2 androidboot.hardware=android_x86 video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID sdhci.debug_quirks2=0x04 quiet
+    linux /ANDRID/kernel-7.2 androidboot.hardware=android_x86 video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 HWC=drm GRALLOC=gbm ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID sdhci.debug_quirks2=0x04 quiet
+    echo "Loading Initrd..."
+    initrd /ANDRID/initrd.img
+}
+
+menuentry "Yoga Book Android-x86 - Live Mode (Kernel 7.2 - Software Rendering Fallback)" {
+    set gfxpayload=keep
+    search --no-floppy --file --set=root /ANDRID/kernel-7.2
+    echo "Loading Yoga Book Kernel 7.2 Software Rendering Mode..."
+    linux /ANDRID/kernel-7.2 androidboot.hardware=android_x86 video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 HWACCEL=0 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID sdhci.debug_quirks2=0x04 quiet
     echo "Loading Initrd..."
     initrd /ANDRID/initrd.img
 }

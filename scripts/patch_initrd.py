@@ -163,5 +163,11 @@ def patch_initrd(initrd_path: str):
     print(f"Successfully updated {initrd_path} ({os.path.getsize(initrd_path)} bytes)")
 
 if __name__ == '__main__':
-    target = sys.argv[1] if len(sys.argv) > 1 else 'D:/ANDRID/initrd.img'
-    patch_initrd(target)
+    src = sys.argv[1] if len(sys.argv) > 1 else 'D:/ANDRID/initrd.img.bak_build18'
+    dst = sys.argv[2] if len(sys.argv) > 2 else 'D:/ANDRID/initrd.img'
+    if not os.path.exists(src):
+        src = dst
+    import shutil
+    if src != dst:
+        shutil.copy2(src, dst)
+    patch_initrd(dst)

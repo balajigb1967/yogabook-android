@@ -4,11 +4,15 @@ patch_installer.py - Patches Android-x86 install.img to enable 100% unattended
 installation on devices without physical keyboards (such as the Lenovo Yoga Book).
 
 Supports:
-- AUTO_INSTALL=auto: Automatically targets internal eMMC partition (mmcblk0p2)
-- Erases previous OS (Bass OS) cleanly by formatting mmcblk0p2 with ext4
-- Directly copies kernel, initrd.img, ramdisk.img, and system.sfs into /hd/$asrc/
-- Creates compatibility symlinks so GRUB search finds /kernel and /$asrc/kernel
-- Automatic 5-second countdown reboot on completion
+- AUTO_INSTALL=auto: Automatically targets internal eMMC partition (064G70)
+- Erases previous OS (BlissOS / Bass OS) cleanly by zeroing partition headers and formatting with ext4
+- Writes standalone GRUB to eMMC EFI partition with full Yoga Book parameters:
+  * video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 HWC=drm GRALLOC=gbm
+  * ro.surface_flinger.primary_display_orientation=ORIENTATION_90
+  * Both Kernel 7.2 Mainline and Kernel 6.18-zenith boot options
+- Copies all boot files (kernel, kernel-7.2, kernel-6.18, initrd.img, ramdisk.img, system.sfs)
+- Automatically purges old BlissOS/BassOS NVRAM entries
+- Automatic countdown reboot on completion
 """
 
 import sys
@@ -28,35 +32,6 @@ def patch_1_install_text(txt: str) -> str:
 			;;
 		*)
 			[ -z "$answer" ] && set_answer_if_auto Create
-			;;
-	esac
-
-	select_dev || rebooting"""
-
-    old_hd_prev = """install_hd()
-{
-	case "$AUTO_INSTALL" in
-		[Uu]pdate)
-			answer=${AUTO_UPDATE:-$(blkid | grep -v loop | grep -v iso9660 | sort | grep Android-x86 | cut -d: -f1 | head -1)}
-			answer=${answer:-$(blkid | grep -v loop | grep -v iso9660 | sort | grep ext4 | cut -d: -f1 | head -1)}
-			[ -b "$answer" -o -b "/dev/$answer" ] && answer=$(basename "$answer") || answer=
-			AUTO_UPDATE=${answer:-$AUTO_UPDATE}
-			FORCE_FORMAT=no
-			;;
-		*)
-			# Default unattended install: Cleanly ERASE and install to internal eMMC partition 2
-			target="${AUTO_INSTALL#force_format:}"
-			[ "$target" = "auto" -o "$target" = "1" -o -z "$target" ] && target=""
-			if [ -n "$target" ] && [ -b "/dev/$(basename $target)" ]; then
-				answer=$(basename "$target")
-			elif [ -b /dev/mmcblk0p2 ]; then
-				answer="mmcblk0p2"
-			else
-				answer=$(blkid | grep -v loop | grep -v iso9660 | sort | grep ext4 | cut -d: -f1 | head -1)
-				[ -z "$answer" ] && answer=$(ls /sys/block/mmcblk0/mmcblk0p* /sys/block/sda/sda* 2>/dev/null | grep -v -E "p1$|1$" | head -1)
-				[ -n "$answer" ] && answer=$(basename "$answer")
-			fi
-			FORCE_FORMAT=ext4
 			;;
 	esac
 
@@ -132,16 +107,11 @@ def patch_1_install_text(txt: str) -> str:
 
     if old_hd_orig in txt:
         txt = txt.replace(old_hd_orig, new_hd)
-        print("  [+] Patched install_hd() from original for unattended partition selection and bypass")
-    elif old_hd_prev in txt:
-        txt = txt.replace(old_hd_prev, new_hd)
-        print("  [+] Patched install_hd() from previous version for unattended partition selection and bypass")
-    elif 'install_hd()' in txt:
-        # Fallback to replacing just case block
-        txt = txt.replace('select_dev || rebooting', 'if [ -n "$AUTO_INSTALL" ] && [ -n "$answer" ]; then choice="$answer"; else select_dev || rebooting; fi')
-        print("  [+] Patched select_dev || rebooting bypass")
+        print("  [+] Patched install_hd() for unattended partition selection and bypass")
+    elif 'Target internal eMMC' in txt:
+        print("  [+] install_hd() already patched")
 
-    # 2. Patch format_fs to zero out Bass OS and format cleanly with busybox mke2fs
+    # 2. Patch format_fs to zero out BlissOS/BassOS and format cleanly with busybox mke2fs
     old_fmt_orig = """format_fs()
 {
 	local cmd
@@ -180,119 +150,19 @@ def patch_1_install_text(txt: str) -> str:
 
     if old_fmt_orig in txt:
         txt = txt.replace(old_fmt_orig, new_fmt_clean)
-        print("  [+] Patched format_fs() from original to zero-fill wipe and clean auto-format")
-    elif 'cmd="mke2fs -F -L"' in txt or 'echo ">>> Wiping Bass OS..."' in txt:
+        print("  [+] Patched format_fs() to zero-fill wipe and clean auto-format")
+    elif 'Wiping previous OS' in txt:
         print("  [+] format_fs() already contains zero-fill wipe logic")
 
-    # 3. Patch install_to() to prevent AUTO_UPDATE from disabling ext4 format on auto-install
+    # 3. Patch FORCE_FORMAT check in install_to()
     old_force = '[ -n "$AUTO_UPDATE" ] && FORCE_FORMAT=no || FORCE_FORMAT=ext4'
     new_force = 'if [ "$AUTO_INSTALL" = "update" ]; then FORCE_FORMAT=no; else FORCE_FORMAT=ext4; fi'
     if old_force in txt:
         txt = txt.replace(old_force, new_force)
         print("  [+] Patched FORCE_FORMAT check in install_to()")
-    else:
-        print("  [!] Warning: FORCE_FORMAT signature not matched, skipping")
 
-    # 4. Patch file copy in install_to() to guarantee direct copying to /hd/$asrc/
-    old_copy = """	try_upgrade hd/$asrc
-	mkdir -p hd/$asrc
-	cd hd/$asrc
-	rm -rf system*
-	( ( cd /; find $files | $CPIO -H newc -o ) | pv -ns ${size}k | ( $CPIO -iud > /dev/null; echo $? > /tmp/result )) 2>&1 \\
-		| progress_bar "Installing $OS_TITLE to $1" "Expect to write $size KB..."
-	result=$((`cat /tmp/result`*255))"""
-
-    new_copy = """	try_upgrade hd/$asrc
-	mkdir -p hd/$asrc
-	cd hd/$asrc
-	rm -rf system*
-
-	# Direct copy from source media to guarantee kernel and system files land directly in hd/$asrc
-	src_media=""
-	for sm in /src "/mnt/$SRC" "/mnt/${SRC#/}" /mnt/ANDRID /mnt/andrid /mnt; do
-		if [ -f "$sm/kernel" ] && [ -f "$sm/initrd.img" ]; then
-			src_media="$sm"
-			break
-		fi
-	done
-
-	if [ -n "$src_media" ]; then
-		echo "Copying Yoga Book Android files directly from $src_media to /hd/$asrc..."
-		cp -vf "$src_media/kernel" "/hd/$asrc/kernel"
-		cp -vf "$src_media/initrd.img" "/hd/$asrc/initrd.img"
-		[ -f "$src_media/$RAMDISK" ] && cp -vf "$src_media/$RAMDISK" "/hd/$asrc/$RAMDISK"
-		[ -f "$src_media/ramdisk.img" ] && cp -vf "$src_media/ramdisk.img" "/hd/$asrc/ramdisk.img"
-		if [ -f "$src_media/system.sfs" ]; then
-			cp -vf "$src_media/system.sfs" "/hd/$asrc/system.sfs"
-		elif [ -f "$src_media/system.img" ]; then
-			cp -vf "$src_media/system.img" "/hd/$asrc/system.img"
-		fi
-		echo 0 > /tmp/result
-	else
-		( ( cd /; find $files | $CPIO -H newc -o ) | pv -ns ${size}k | ( $CPIO -iud > /dev/null; echo $? > /tmp/result )) 2>&1 \\
-			| progress_bar "Installing $OS_TITLE to $1" "Expect to write $size KB..."
-	fi
-	result=$((`cat /tmp/result`*255))"""
-
-    if old_copy in txt:
-        txt = txt.replace(old_copy, new_copy)
-        print("  [+] Patched file copying to use direct robust copy to /hd/$asrc")
-    else:
-        print("  [!] Warning: file copy signature not matched, skipping")
-
-    # 5. Flatten any subdirectories and create root symlinks for GRUB compatibility
-    old_flatten = """		for d in android mnt sfs ./$SRC; do
-			[ -d $d ] && mv $d/* . && rmdir $d
-		done"""
-
-    new_flatten = """		for d in android mnt sfs ./$SRC ANDRID andrid; do
-			[ -d "$d" ] && mv "$d"/* . 2>/dev/null && rmdir "$d" 2>/dev/null
-		done
-		for sub in /hd/$asrc/ANDRID /hd/$asrc/andrid /hd/$asrc/mnt/* /hd/$asrc/mnt; do
-			if [ -d "$sub" ]; then
-				mv -f "$sub"/* /hd/$asrc/ 2>/dev/null || true
-				rm -rf "$sub" 2>/dev/null || true
-			fi
-		done
-		# Root compatibility links so GRUB finds /kernel or /$asrc/kernel
-		ln -sf "$asrc/kernel" /hd/kernel 2>/dev/null || true
-		ln -sf "$asrc/initrd.img" /hd/initrd.img 2>/dev/null || true
-		ln -sf "$asrc/ramdisk.img" /hd/ramdisk.img 2>/dev/null || true
-		ln -sf "$asrc/system.sfs" /hd/system.sfs 2>/dev/null || true
-		ln -sf "$asrc" /hd/android 2>/dev/null || true
-		mkdir -p "/hd/$asrc/data" "/hd/data" 2>/dev/null || true"""
-
-    if old_flatten in txt:
-        txt = txt.replace(old_flatten, new_flatten)
-        print("  [+] Patched folder flattening and root compatibility symlinks")
-    else:
-        print("  [!] Warning: folder flattening signature not matched, skipping")
-
-    # 6. Patch Congratulations dialog for auto-reboot countdown
-    old_cong = """	[ -n "$VESA" ] || runit="Run $OS_TITLE"
-	dialog --clear --title ' Congratulations! ' \\
-		--menu "\\n $OS_TITLE is installed successfully.\\n " 11 51 13 \\
-		"$runit" "" "Reboot" "" 2> $tempfile"""
-
-    new_cong = """	[ -n "$VESA" ] || runit="Run $OS_TITLE"
-	if [ -n "$AUTO_INSTALL" ]; then
-		dialog --timeout 6 --clear --title ' Congratulations! ' \\
-			--menu "\\n $OS_TITLE was successfully installed to /dev/$choice.\\n\\n Rebooting to Android in 5 seconds...\\n (Touch screen or wait to finish)" 12 62 13 \\
-			"Reboot" "" "$runit" "" 2> $tempfile || echo "Reboot" > $tempfile
-	else
-		dialog --clear --title ' Congratulations! ' \\
-			--menu "\\n $OS_TITLE is installed successfully.\\n " 11 51 13 \\
-			"$runit" "" "Reboot" "" 2> $tempfile
-	fi"""
-
-    if old_cong in txt:
-        txt = txt.replace(old_cong, new_cong)
-        print("  [+] Patched Congratulations dialog for auto-reboot countdown")
-    else:
-        print("  [!] Warning: Congratulations dialog signature not matched, skipping")
-
-    # 7. Force clean format of EFI partition to wipe old Bass OS bootloader and write standalone GRUB to all paths
-    old_efi_block = """		until try_mount rw /dev/$boot efi; do
+    # 4. Patch EFI block: format EFI partition, configure grubcfg, and write standalone GRUB with full display tokens
+    old_efi_orig = """		until try_mount rw /dev/$boot efi; do
 			dialog --title " Confirm " --defaultno --yesno "\\n Cannot mount /dev/$boot.\\n Do you want to format it?" 8 37
 			[ $? -eq 0 ] && mkdosfs -n EFI /dev/$boot
 		done
@@ -320,11 +190,13 @@ def patch_1_install_text(txt: str) -> str:
 		try_mount rw /dev/$boot efi
 		if [ "$efi" = "32" ]; then
 			bootefi=bootia32.efi
+			grubcfg=efi/boot/grub/i386-efi/grub.cfg
 		else
 			bootefi=BOOTx64.EFI
+			grubcfg=efi/boot/grub/x86_64-efi/grub.cfg
 		fi
 		efidir=/EFI/BOOT
-		mkdir -p efi/EFI/BOOT efi/EFI/boot efi/EFI/Android efi/boot/grub 2>/dev/null || true
+		mkdir -p efi/EFI/BOOT efi/EFI/boot efi/EFI/Android efi/boot/grub efi/boot/grub/x86_64-efi efi/boot/grub/i386-efi 2>/dev/null || true
 		cp -af grub2/efi/boot/* efi/EFI/BOOT/ 2>/dev/null || true
 		cp -af grub2/efi/boot/* efi/EFI/boot/ 2>/dev/null || true
 		cp -af grub2/efi/boot/* efi/EFI/Android/ 2>/dev/null || true
@@ -343,25 +215,28 @@ if [ -z "$root" ]; then
     search --no-floppy --file --set=root /kernel
 fi
 
-menuentry "Yoga Book Android-x86" {
+menuentry "Yoga Book Android-x86 (Kernel 7.2 Mainline - Hardware Accelerated)" {
     set gfxpayload=keep
-    if [ -f /android-9.0-r2/kernel ]; then
-        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
-        initrd /android-9.0-r2/initrd.img
-    else
-        linux /kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
-        initrd /initrd.img
-    fi
+    linux /android-9.0-r2/kernel androidboot.hardware=android_x86 video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 HWC=drm GRALLOC=gbm ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/android-9.0-r2 sdhci.debug_quirks2=0x04 quiet
+    initrd /android-9.0-r2/initrd.img
 }
-menuentry "Yoga Book Android-x86 (Verbose Console)" {
+
+menuentry "Yoga Book Android-x86 (Kernel 7.2 - Software Rendering Fallback)" {
     set gfxpayload=keep
-    if [ -f /android-9.0-r2/kernel ]; then
-        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
-        initrd /android-9.0-r2/initrd.img
-    else
-        linux /kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
-        initrd /initrd.img
-    fi
+    linux /android-9.0-r2/kernel androidboot.hardware=android_x86 video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 HWACCEL=0 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/android-9.0-r2 sdhci.debug_quirks2=0x04 quiet
+    initrd /android-9.0-r2/initrd.img
+}
+
+menuentry "Yoga Book Android-x86 (Kernel 6.18-zenith)" {
+    set gfxpayload=keep
+    linux /android-9.0-r2/kernel-6.18 androidboot.hardware=android_x86 video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/android-9.0-r2 sdhci.debug_quirks2=0x04 quiet
+    initrd /android-9.0-r2/initrd.img
+}
+
+menuentry "Yoga Book Android-x86 (Verbose Console Debug)" {
+    set gfxpayload=keep
+    linux /android-9.0-r2/kernel androidboot.hardware=android_x86 video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/android-9.0-r2 sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
+    initrd /android-9.0-r2/initrd.img
 }
 EOF_GRUB
 		cp -f /tmp/standalone_grub.cfg efi/boot/grub/grub.cfg 2>/dev/null || true
@@ -372,13 +247,13 @@ EOF_GRUB
 		cp -f /tmp/standalone_grub.cfg efi/EFI/Android/grub.cfg 2>/dev/null || true
 		cp -f /tmp/standalone_grub.cfg /hd/boot/grub/grub.cfg 2>/dev/null || true"""
 
-    if old_efi_block in txt:
-        txt = txt.replace(old_efi_block, new_efi_block)
-        print("  [+] Patched EFI block: force clean format and write standalone bootloader to all paths")
-    else:
-        print("  [!] Warning: EFI block signature not matched, skipping")
+    if old_efi_orig in txt:
+        txt = txt.replace(old_efi_orig, new_efi_block)
+        print("  [+] Patched EFI block: clean format and robust standalone GRUB configuration")
+    elif 'standalone_grub.cfg' in txt:
+        print("  [+] EFI block already contains standalone GRUB logic")
 
-    # 8. Delete BlissOS, BassOS, and old Android entries from UEFI NVRAM so BlissOS never boots
+    # 5. Patch efibootmgr block to purge old NVRAM entries and register new EFI entry
     old_efimgr = """		# Checking for old EFI entries, removing them and adding new depending on bitness
 		efibootmgr | grep -Eo ".{0,6}Android-x86" | cut -c1-4 > /tmp/efientries
 		if [ -s /tmp/efientries ]; then
@@ -390,13 +265,116 @@ EOF_GRUB
     new_efimgr = """		# Delete old BlissOS / BassOS / Android entries from UEFI NVRAM so only clean Android remains
 		for b in $(efibootmgr 2>/dev/null | grep -iE "bliss|bass|android" | awk '{print $1}' | sed 's/Boot//; s/\\*//'); do
 			efibootmgr -b "$b" -B > /dev/null 2>&1 || true
-		done"""
+		done
+		efibootmgr -v -c -d /dev/$disk -p $esp -L "Android-x86" -l "\\\\EFI\\\\BOOT\\\\$bootefi" > /dev/tty4 2>&1 || true"""
 
     if old_efimgr in txt:
         txt = txt.replace(old_efimgr, new_efimgr)
-        print("  [+] Patched efibootmgr to purge BlissOS and BassOS from UEFI NVRAM")
-    else:
-        print("  [!] Warning: efibootmgr block not matched, skipping")
+        print("  [+] Patched efibootmgr to purge BlissOS/BassOS from UEFI NVRAM and register clean entry")
+    elif 'efibootmgr -b "$b" -B' in txt:
+        print("  [+] efibootmgr already contains NVRAM purge logic")
+
+    # 6. Patch file copying in install_to() to directly copy kernel, kernel-7.2, kernel-6.18, initrd, system.sfs
+    old_copy = """	try_upgrade hd/$asrc
+	mkdir -p hd/$asrc
+	cd hd/$asrc
+	rm -rf system*
+	( ( cd /; find $files | $CPIO -H newc -o ) | pv -ns ${size}k | ( $CPIO -iud > /dev/null; echo $? > /tmp/result )) 2>&1 \\
+		| progress_bar "Installing $OS_TITLE to $1" "Expect to write $size KB..."
+	result=$((`cat /tmp/result`*255))"""
+
+    new_copy = """	try_upgrade hd/$asrc
+	mkdir -p hd/$asrc
+	cd hd/$asrc
+	rm -rf system*
+
+	# Direct copy from source media to guarantee kernel and system files land directly in hd/$asrc
+	src_media=""
+	for sm in /src "/mnt/$SRC" "/mnt/${SRC#/}" /mnt/ANDRID /mnt/andrid /mnt; do
+		if [ -f "$sm/kernel" ] && [ -f "$sm/initrd.img" ]; then
+			src_media="$sm"
+			break
+		fi
+	done
+
+	if [ -n "$src_media" ]; then
+		echo "Copying Yoga Book Android files directly from $src_media to /hd/$asrc..."
+		cp -vf "$src_media/kernel" "/hd/$asrc/kernel" 2>/dev/null || true
+		[ -f "$src_media/kernel-7.2" ] && cp -vf "$src_media/kernel-7.2" "/hd/$asrc/kernel-7.2" 2>/dev/null || true
+		[ -f "$src_media/kernel-6.18" ] && cp -vf "$src_media/kernel-6.18" "/hd/$asrc/kernel-6.18" 2>/dev/null || true
+		cp -vf "$src_media/initrd.img" "/hd/$asrc/initrd.img" 2>/dev/null || true
+		[ -f "$src_media/$RAMDISK" ] && cp -vf "$src_media/$RAMDISK" "/hd/$asrc/$RAMDISK" 2>/dev/null || true
+		[ -f "$src_media/ramdisk.img" ] && cp -vf "$src_media/ramdisk.img" "/hd/$asrc/ramdisk.img" 2>/dev/null || true
+		if [ -f "$src_media/system.sfs" ]; then
+			cp -vf "$src_media/system.sfs" "/hd/$asrc/system.sfs" 2>/dev/null || true
+		elif [ -f "$src_media/system.img" ]; then
+			cp -vf "$src_media/system.img" "/hd/$asrc/system.img" 2>/dev/null || true
+		fi
+		echo 0 > /tmp/result
+	else
+		( ( cd /; find $files | $CPIO -H newc -o ) | pv -ns ${size}k | ( $CPIO -iud > /dev/null; echo $? > /tmp/result )) 2>&1 \\
+			| progress_bar "Installing $OS_TITLE to $1" "Expect to write $size KB..."
+	fi
+	result=$((`cat /tmp/result`*255))"""
+
+    if old_copy in txt:
+        txt = txt.replace(old_copy, new_copy)
+        print("  [+] Patched file copying to use direct robust copy to /hd/$asrc")
+    elif 'Copying Yoga Book Android files directly' in txt:
+        print("  [+] File copy logic already patched")
+
+    # 7. Flatten subdirectories and create root symlinks for GRUB compatibility
+    old_flatten = """		for d in android mnt sfs ./$SRC; do
+			[ -d $d ] && mv $d/* . && rmdir $d
+		done"""
+
+    new_flatten = """		for d in android mnt sfs ./$SRC ANDRID andrid; do
+			[ -d "$d" ] && mv "$d"/* . 2>/dev/null && rmdir "$d" 2>/dev/null
+		done
+		for sub in /hd/$asrc/ANDRID /hd/$asrc/andrid /hd/$asrc/mnt/* /hd/$asrc/mnt; do
+			if [ -d "$sub" ]; then
+				mv -f "$sub"/* /hd/$asrc/ 2>/dev/null || true
+				rm -rf "$sub" 2>/dev/null || true
+			fi
+		done
+		# Root compatibility links so GRUB finds /kernel or /$asrc/kernel
+		ln -sf "$asrc/kernel" /hd/kernel 2>/dev/null || true
+		ln -sf "$asrc/kernel-7.2" /hd/kernel-7.2 2>/dev/null || true
+		ln -sf "$asrc/kernel-6.18" /hd/kernel-6.18 2>/dev/null || true
+		ln -sf "$asrc/initrd.img" /hd/initrd.img 2>/dev/null || true
+		ln -sf "$asrc/ramdisk.img" /hd/ramdisk.img 2>/dev/null || true
+		ln -sf "$asrc/system.sfs" /hd/system.sfs 2>/dev/null || true
+		ln -sf "$asrc" /hd/android 2>/dev/null || true
+		mkdir -p "/hd/$asrc/data" "/hd/data" 2>/dev/null || true"""
+
+    if old_flatten in txt:
+        txt = txt.replace(old_flatten, new_flatten)
+        print("  [+] Patched folder flattening and root compatibility symlinks")
+    elif 'Root compatibility links' in txt:
+        print("  [+] Folder flattening already patched")
+
+    # 8. Patch Congratulations dialog for auto-reboot countdown
+    old_cong = """	[ -n "$VESA" ] || runit="Run $OS_TITLE"
+	dialog --clear --title ' Congratulations! ' \\
+		--menu "\\n $OS_TITLE is installed successfully.\\n " 11 51 13 \\
+		"$runit" "" "Reboot" "" 2> $tempfile"""
+
+    new_cong = """	[ -n "$VESA" ] || runit="Run $OS_TITLE"
+	if [ -n "$AUTO_INSTALL" ]; then
+		dialog --timeout 6 --clear --title ' Congratulations! ' \\
+			--menu "\\n $OS_TITLE was successfully installed to /dev/$choice.\\n\\n Rebooting to Android in 5 seconds...\\n (Touch screen or wait to finish)" 12 62 13 \\
+			"Reboot" "" "$runit" "" 2> $tempfile || echo "Reboot" > $tempfile
+	else
+		dialog --clear --title ' Congratulations! ' \\
+			--menu "\\n $OS_TITLE is installed successfully.\\n " 11 51 13 \\
+			"$runit" "" "Reboot" "" 2> $tempfile
+	fi"""
+
+    if old_cong in txt:
+        txt = txt.replace(old_cong, new_cong)
+        print("  [+] Patched Congratulations dialog for auto-reboot countdown")
+    elif 'Rebooting to Android in 5 seconds' in txt:
+        print("  [+] Congratulations dialog already patched")
 
     return txt
 
@@ -480,7 +458,6 @@ def patch_install_img(input_img_path: str, output_img_path: str):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3:
-        print("Usage: patch_installer.py <input install.img> <output install.img>")
-        sys.exit(1)
-    patch_install_img(sys.argv[1], sys.argv[2])
+    src = sys.argv[1] if len(sys.argv) > 1 else 'D:/ANDRID/install.img.bak_build18'
+    dst = sys.argv[2] if len(sys.argv) > 2 else 'D:/ANDRID/install.img'
+    patch_install_img(src, dst)
