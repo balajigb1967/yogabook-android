@@ -64,21 +64,23 @@ def patch_1_install_text(txt: str) -> str:
     else:
         print("  [!] Warning: install_hd() signature not matched, skipping")
 
-    # 2. Patch format_fs to use mke2fs -F -L (force format to wipe Bass OS without prompt)
-    old_fmt = """	case "$choice" in
+    # 2. Patch format_fs to zero out Bass OS and format with busybox mke2fs
+    if 'cmd="mke2fs -F -L"' in txt:
+        txt = txt.replace('cmd="mke2fs -F -L"', 'echo ">>> Wiping Bass OS..."; busybox dd if=/dev/zero of=/dev/$1 bs=1M count=100 2>/dev/null || true; cmd="busybox mke2fs -F -L"')
+        print("  [+] Patched format_fs() from previous mke2fs to zero-fill wipe and busybox mke2fs")
+    elif 'cmd="mkfs.ext3 -L"' in txt:
+        old_fmt = """	case "$choice" in
 		ext4)
 			cmd="mkfs.ext3 -L"
 			;;"""
-
-    new_fmt = """	case "$choice" in
+        new_fmt = """	case "$choice" in
 		ext4)
 			umount /dev/$1 2>/dev/null || true
-			cmd="mke2fs -F -L"
+			echo ">>> Wiping Bass OS..."; busybox dd if=/dev/zero of=/dev/$1 bs=1M count=100 2>/dev/null || true
+			cmd="busybox mke2fs -F -L"
 			;;"""
-
-    if old_fmt in txt:
         txt = txt.replace(old_fmt, new_fmt)
-        print("  [+] Patched format_fs() to use mke2fs -F -L for forced partition wipe")
+        print("  [+] Patched format_fs() to zero-fill wipe and busybox mke2fs")
     else:
         print("  [!] Warning: format_fs() signature not matched, skipping")
 
@@ -188,7 +190,17 @@ def patch_1_install_text(txt: str) -> str:
     else:
         print("  [!] Warning: Congratulations dialog signature not matched, skipping")
 
-    txt = txt.replace('\t\tReboot*)\n\t\t\trebooting', '\t\tReboot*|*)\n\t\t\trebooting')
+    # 7. Mirror EFI bootloader to both /efi/boot and /efi/Android so old NVRAM entries boot Android-x86
+    old_efi_copy = "cp -af grub2/efi/boot/* efi$efidir"
+    new_efi_copy = """cp -af grub2/efi/boot/* efi$efidir
+\t\tmkdir -p efi/efi/boot efi/efi/Android efi/boot efi/Android 2>/dev/null || true
+\t\tcp -af grub2/efi/boot/* efi/efi/boot/ 2>/dev/null || true
+\t\tcp -af grub2/efi/boot/* efi/efi/Android/ 2>/dev/null || true
+\t\tcp -af grub2/efi/boot/* efi/boot/ 2>/dev/null || true
+\t\tcp -af grub2/efi/boot/* efi/Android/ 2>/dev/null || true"""
+    if old_efi_copy in txt:
+        txt = txt.replace(old_efi_copy, new_efi_copy)
+        print("  [+] Patched EFI copy to mirror across all EFI paths")
 
     return txt
 
