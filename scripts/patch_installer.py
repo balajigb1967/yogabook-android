@@ -4,11 +4,11 @@ patch_installer.py - Patches Android-x86 install.img to enable 100% unattended
 installation on devices without physical keyboards (such as the Lenovo Yoga Book).
 
 Supports:
-- AUTO_INSTALL=auto: Automatically targets internal OS partition (mmcblk0p2)
-- AUTO_INSTALL=force_format: Cleanly formats target partition as ext4
-- AUTO_INSTALL=update: Updates Android while preserving user data
-- AUTO_INSTALL=mmcblk0p2: Explicit partition targeting
-- Automatic 5-second countdown reboot on completion (no keyboard prompt lock)
+- AUTO_INSTALL=auto: Automatically targets internal eMMC partition (mmcblk0p2)
+- Erases previous OS (Bass OS) cleanly by formatting mmcblk0p2 with ext4
+- Directly copies kernel, initrd.img, ramdisk.img, and system.sfs into /hd/$asrc/
+- Creates compatibility symlinks so GRUB search finds /kernel and /$asrc/kernel
+- Automatic 5-second countdown reboot on completion
 """
 
 import sys
@@ -16,6 +16,7 @@ import os
 import gzip
 
 def patch_1_install_text(txt: str) -> str:
+    # 1. Patch install_hd() for robust auto-install targeting and forcing clean ext4 format
     old_hd = """install_hd()
 {
 	case "$AUTO_INSTALL" in
@@ -33,34 +34,138 @@ def patch_1_install_text(txt: str) -> str:
     new_hd = """install_hd()
 {
 	case "$AUTO_INSTALL" in
-		force_format*)
-			target="${AUTO_INSTALL#force_format:}"
-			[ "$target" = "$AUTO_INSTALL" ] && target="mmcblk0p2"
-			answer=$(basename "$target")
-			FORCE_FORMAT=ext4
-			;;
-		[Uu]*|auto|mmcblk*|sd*|nvme*|/dev/*)
-			if [ "$AUTO_INSTALL" = "auto" ] || [ "${AUTO_INSTALL#[Uu]}" != "$AUTO_INSTALL" ]; then
-				answer=${AUTO_UPDATE:-$(blkid | grep -v loop | grep -v iso9660 | sort | grep Android-x86 | cut -d: -f1 | head -1)}
-				answer=${answer:-$(blkid | grep -v loop | grep -v iso9660 | sort | grep ext4 | cut -d: -f1 | head -1)}
-				[ -z "$answer" ] && answer=$(ls /sys/block/mmcblk0/mmcblk0p* /sys/block/sda/sda* 2>/dev/null | grep -v -E "p1$|1$" | head -1)
-			else
-				answer="$AUTO_INSTALL"
-			fi
+		[Uu]pdate)
+			answer=${AUTO_UPDATE:-$(blkid | grep -v loop | grep -v iso9660 | sort | grep Android-x86 | cut -d: -f1 | head -1)}
+			answer=${answer:-$(blkid | grep -v loop | grep -v iso9660 | sort | grep ext4 | cut -d: -f1 | head -1)}
 			[ -b "$answer" -o -b "/dev/$answer" ] && answer=$(basename "$answer") || answer=
 			AUTO_UPDATE=${answer:-$AUTO_UPDATE}
+			FORCE_FORMAT=no
 			;;
 		*)
-			[ -z "$answer" ] && set_answer_if_auto Create
+			# Default unattended install: Cleanly ERASE and install to internal eMMC partition 2
+			target="${AUTO_INSTALL#force_format:}"
+			[ "$target" = "auto" -o "$target" = "1" -o -z "$target" ] && target=""
+			if [ -n "$target" ] && [ -b "/dev/$(basename $target)" ]; then
+				answer=$(basename "$target")
+			elif [ -b /dev/mmcblk0p2 ]; then
+				answer="mmcblk0p2"
+			else
+				answer=$(blkid | grep -v loop | grep -v iso9660 | sort | grep ext4 | cut -d: -f1 | head -1)
+				[ -z "$answer" ] && answer=$(ls /sys/block/mmcblk0/mmcblk0p* /sys/block/sda/sda* 2>/dev/null | grep -v -E "p1$|1$" | head -1)
+				[ -n "$answer" ] && answer=$(basename "$answer")
+			fi
+			FORCE_FORMAT=ext4
 			;;
 	esac"""
 
     if old_hd in txt:
         txt = txt.replace(old_hd, new_hd)
-        print("  [+] Patched install_hd() for robust unattended partition selection")
+        print("  [+] Patched install_hd() for unattended partition selection and ext4 clean format")
     else:
         print("  [!] Warning: install_hd() signature not matched, skipping")
 
+    # 2. Patch format_fs to use mke2fs -F -L (force format to wipe Bass OS without prompt)
+    old_fmt = """	case "$choice" in
+		ext4)
+			cmd="mkfs.ext3 -L"
+			;;"""
+
+    new_fmt = """	case "$choice" in
+		ext4)
+			umount /dev/$1 2>/dev/null || true
+			cmd="mke2fs -F -L"
+			;;"""
+
+    if old_fmt in txt:
+        txt = txt.replace(old_fmt, new_fmt)
+        print("  [+] Patched format_fs() to use mke2fs -F -L for forced partition wipe")
+    else:
+        print("  [!] Warning: format_fs() signature not matched, skipping")
+
+    # 3. Patch install_to() to prevent AUTO_UPDATE from disabling ext4 format on auto-install
+    old_force = '[ -n "$AUTO_UPDATE" ] && FORCE_FORMAT=no || FORCE_FORMAT=ext4'
+    new_force = 'if [ "$AUTO_INSTALL" = "update" ]; then FORCE_FORMAT=no; else FORCE_FORMAT=ext4; fi'
+    if old_force in txt:
+        txt = txt.replace(old_force, new_force)
+        print("  [+] Patched FORCE_FORMAT check in install_to()")
+    else:
+        print("  [!] Warning: FORCE_FORMAT signature not matched, skipping")
+
+    # 4. Patch file copy in install_to() to guarantee direct copying to /hd/$asrc/
+    old_copy = """	try_upgrade hd/$asrc
+	mkdir -p hd/$asrc
+	cd hd/$asrc
+	rm -rf system*
+	( ( cd /; find $files | $CPIO -H newc -o ) | pv -ns ${size}k | ( $CPIO -iud > /dev/null; echo $? > /tmp/result )) 2>&1 \\
+		| progress_bar "Installing $OS_TITLE to $1" "Expect to write $size KB..."
+	result=$((`cat /tmp/result`*255))"""
+
+    new_copy = """	try_upgrade hd/$asrc
+	mkdir -p hd/$asrc
+	cd hd/$asrc
+	rm -rf system*
+
+	# Direct copy from source media to guarantee kernel and system files land directly in hd/$asrc
+	src_media=""
+	for sm in /src "/mnt/$SRC" "/mnt/${SRC#/}" /mnt/ANDRID /mnt/andrid /mnt; do
+		if [ -f "$sm/kernel" ] && [ -f "$sm/initrd.img" ]; then
+			src_media="$sm"
+			break
+		fi
+	done
+
+	if [ -n "$src_media" ]; then
+		echo "Copying Yoga Book Android files directly from $src_media to /hd/$asrc..."
+		cp -vf "$src_media/kernel" "/hd/$asrc/kernel"
+		cp -vf "$src_media/initrd.img" "/hd/$asrc/initrd.img"
+		[ -f "$src_media/$RAMDISK" ] && cp -vf "$src_media/$RAMDISK" "/hd/$asrc/$RAMDISK"
+		[ -f "$src_media/ramdisk.img" ] && cp -vf "$src_media/ramdisk.img" "/hd/$asrc/ramdisk.img"
+		if [ -f "$src_media/system.sfs" ]; then
+			cp -vf "$src_media/system.sfs" "/hd/$asrc/system.sfs"
+		elif [ -f "$src_media/system.img" ]; then
+			cp -vf "$src_media/system.img" "/hd/$asrc/system.img"
+		fi
+		echo 0 > /tmp/result
+	else
+		( ( cd /; find $files | $CPIO -H newc -o ) | pv -ns ${size}k | ( $CPIO -iud > /dev/null; echo $? > /tmp/result )) 2>&1 \\
+			| progress_bar "Installing $OS_TITLE to $1" "Expect to write $size KB..."
+	fi
+	result=$((`cat /tmp/result`*255))"""
+
+    if old_copy in txt:
+        txt = txt.replace(old_copy, new_copy)
+        print("  [+] Patched file copying to use direct robust copy to /hd/$asrc")
+    else:
+        print("  [!] Warning: file copy signature not matched, skipping")
+
+    # 5. Flatten any subdirectories and create root symlinks for GRUB compatibility
+    old_flatten = """		for d in android mnt sfs ./$SRC; do
+			[ -d $d ] && mv $d/* . && rmdir $d
+		done"""
+
+    new_flatten = """		for d in android mnt sfs ./$SRC ANDRID andrid; do
+			[ -d "$d" ] && mv "$d"/* . 2>/dev/null && rmdir "$d" 2>/dev/null
+		done
+		for sub in /hd/$asrc/ANDRID /hd/$asrc/andrid /hd/$asrc/mnt/* /hd/$asrc/mnt; do
+			if [ -d "$sub" ]; then
+				mv -f "$sub"/* /hd/$asrc/ 2>/dev/null || true
+				rm -rf "$sub" 2>/dev/null || true
+			fi
+		done
+		# Root compatibility links so GRUB finds /kernel or /$asrc/kernel
+		ln -sf "$asrc/kernel" /hd/kernel 2>/dev/null || true
+		ln -sf "$asrc/initrd.img" /hd/initrd.img 2>/dev/null || true
+		ln -sf "$asrc/ramdisk.img" /hd/ramdisk.img 2>/dev/null || true
+		ln -sf "$asrc/system.sfs" /hd/system.sfs 2>/dev/null || true
+		ln -sf "$asrc" /hd/android 2>/dev/null || true"""
+
+    if old_flatten in txt:
+        txt = txt.replace(old_flatten, new_flatten)
+        print("  [+] Patched folder flattening and root compatibility symlinks")
+    else:
+        print("  [!] Warning: folder flattening signature not matched, skipping")
+
+    # 6. Patch Congratulations dialog for auto-reboot countdown
     old_cong = """	[ -n "$VESA" ] || runit="Run $OS_TITLE"
 	dialog --clear --title ' Congratulations! ' \\
 		--menu "\\n $OS_TITLE is installed successfully.\\n " 11 51 13 \\
@@ -83,7 +188,6 @@ def patch_1_install_text(txt: str) -> str:
     else:
         print("  [!] Warning: Congratulations dialog signature not matched, skipping")
 
-    # Ensure default reboot on timeout
     txt = txt.replace('\t\tReboot*)\n\t\t\trebooting', '\t\tReboot*|*)\n\t\t\trebooting')
 
     return txt
@@ -91,14 +195,10 @@ def patch_1_install_text(txt: str) -> str:
 
 def patch_install_img(input_img_path: str, output_img_path: str):
     print(f"Reading input image: {input_img_path}")
-    if input_img_path.endswith('.gz') or input_img_path.endswith('.img'):
-        try:
-            with gzip.open(input_img_path, 'rb') as f:
-                raw = f.read()
-        except gzip.BadGzipFile:
-            with open(input_img_path, 'rb') as f:
-                raw = f.read()
-    else:
+    try:
+        with gzip.open(input_img_path, 'rb') as f:
+            raw = f.read()
+    except Exception:
         with open(input_img_path, 'rb') as f:
             raw = f.read()
 
