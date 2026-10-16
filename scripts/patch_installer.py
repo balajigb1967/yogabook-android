@@ -259,7 +259,8 @@ def patch_1_install_text(txt: str) -> str:
 		ln -sf "$asrc/initrd.img" /hd/initrd.img 2>/dev/null || true
 		ln -sf "$asrc/ramdisk.img" /hd/ramdisk.img 2>/dev/null || true
 		ln -sf "$asrc/system.sfs" /hd/system.sfs 2>/dev/null || true
-		ln -sf "$asrc" /hd/android 2>/dev/null || true"""
+		ln -sf "$asrc" /hd/android 2>/dev/null || true
+		mkdir -p "/hd/$asrc/data" "/hd/data" 2>/dev/null || true"""
 
     if old_flatten in txt:
         txt = txt.replace(old_flatten, new_flatten)
@@ -337,29 +338,29 @@ set gfxmode=auto
 set gfxpayload=keep
 terminal_output gfxterm console || true
 
-search --no-floppy --file --set=root /kernel
+search --no-floppy --file --set=root /android-9.0-r2/kernel
 if [ -z "$root" ]; then
-    search --no-floppy --file --set=root /android-9.0-r2/kernel
+    search --no-floppy --file --set=root /kernel
 fi
 
 menuentry "Yoga Book Android-x86" {
     set gfxpayload=keep
-    if [ -f /kernel ]; then
-        linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
-        initrd /initrd.img
-    else
-        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 SRC=/android-9.0-r2 quiet
+    if [ -f /android-9.0-r2/kernel ]; then
+        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
         initrd /android-9.0-r2/initrd.img
+    else
+        linux /kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
+        initrd /initrd.img
     fi
 }
 menuentry "Yoga Book Android-x86 (Verbose Console)" {
     set gfxpayload=keep
-    if [ -f /kernel ]; then
-        linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
-        initrd /initrd.img
-    else
-        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 SRC=/android-9.0-r2 console=tty0 DEBUG=2
+    if [ -f /android-9.0-r2/kernel ]; then
+        linux /android-9.0-r2/kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
         initrd /android-9.0-r2/initrd.img
+    else
+        linux /kernel androidboot.hardware=android_x86 SRC=/android-9.0-r2 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 console=tty0 DEBUG=2
+        initrd /initrd.img
     fi
 }
 EOF_GRUB

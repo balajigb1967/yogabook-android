@@ -349,7 +349,7 @@ new_try_mount = """try_mount()
 }"""
 c = c.replace(old_try_mount, new_try_mount)
 
-# 3. Fix check_root to never mangle device paths
+# 3. Fix check_root to never mangle device paths and mount root rw directly
 old_check_root_dev = """	if [ "`dirname $1`" = "/dev" ]; then
 		[ -e $1 ] || return 1
 		blk=`basename $1`
@@ -357,14 +357,16 @@ old_check_root_dev = """	if [ "`dirname $1`" = "/dev" ]; then
 		dev=/dev/block/$blk
 	else
 		dev=$1
-	fi"""
+	fi
+	try_mount ro $dev /mnt || return 1"""
 
 new_check_root_dev = """	umount /mnt_log 2>/dev/null || true
 	dev=$1
 	[ -e "$dev" ] || return 1
 	blk=$(basename "$dev")
 	mkdir -p /dev/block
-	[ ! -e "/dev/block/$blk" ] && ln -sf "$dev" "/dev/block/$blk" 2>/dev/null"""
+	[ ! -e "/dev/block/$blk" ] && ln -sf "$dev" "/dev/block/$blk" 2>/dev/null
+	try_mount rw "$dev" /mnt || try_mount ro "$dev" /mnt || return 1"""
 c = c.replace(old_check_root_dev, new_check_root_dev)
 
 # 4. Parse SRC= from cmdline
@@ -482,6 +484,17 @@ c = c.replace(old_mounts, new_mounts)
 
 with open(init_path, "w", encoding="latin1") as f:
     f.write(c)
+
+mount_script = os.path.join(os.environ.get("RDK_WORK", ""), "scripts", "2-mount")
+if os.path.exists(mount_script):
+    with open(mount_script, "r", encoding="latin1") as mf:
+        mc = mf.read()
+    old_mdata = 'mount_data()\n{\n\tmountpoint -q data && return\n\tif [ -n "$DATA" ]; then'
+    new_mdata = 'mount_data()\n{\n\tmountpoint -q data && return\n\tremount_rw\n\tmkdir -p "/mnt/$SRC/data" 2>/dev/null || true\n\tif [ -d "/mnt/$SRC/data" ]; then\n\t\tmount --bind "/mnt/$SRC/data" data && return\n\tfi\n\tif [ -n "$DATA" ]; then'
+    if old_mdata in mc:
+        mc = mc.replace(old_mdata, new_mdata)
+        with open(mount_script, "w", encoding="latin1") as mf:
+            mf.write(mc)
 PYEOF
   chmod +x "$RDK_WORK/init"
 fi
