@@ -79,7 +79,7 @@ def main():
         gofile_link = upload_gofile(iso)
         if gofile_link:
             print(f"  --> GoFile URL: {gofile_link}")
-            summary_lines.append(f"- ⚡ **GoFile (High Speed)**: [{gofile_link}]({gofile_link})")
+            summary_lines.append(f"- ⚡ **GoFile (High Speed)**: {gofile_link}")
         else:
             print("  --> GoFile upload failed or unavailable.")
 
@@ -88,7 +88,7 @@ def main():
         tmp_link = upload_tmpfiles(iso)
         if tmp_link:
             print(f"  --> Tmpfiles URL: {tmp_link}")
-            summary_lines.append(f"- ⚡ **Tmpfiles.org (Direct)**: [{tmp_link}]({tmp_link})")
+            summary_lines.append(f"- ⚡ **Tmpfiles.org (Direct)**: {tmp_link}")
         else:
             print("  --> Tmpfiles upload failed or unavailable.")
 
@@ -97,7 +97,7 @@ def main():
         tsh_link = upload_transfersh(iso)
         if tsh_link:
             print(f"  --> Transfer.sh URL: {tsh_link}")
-            summary_lines.append(f"- ⚡ **transfer.sh**: [{tsh_link}]({tsh_link})")
+            summary_lines.append(f"- ⚡ **transfer.sh**: {tsh_link}")
 
         summary_lines.append("")
 
