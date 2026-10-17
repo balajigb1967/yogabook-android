@@ -17,3 +17,9 @@ __pycache__/
 
 # App metadata
 .freebuff/
+
+# Staging and tools
+iso_build/
+tools/
+scripts/bass_*/
+scripts/iso_stage/
