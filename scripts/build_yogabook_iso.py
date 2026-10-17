@@ -176,8 +176,11 @@ if not os.path.exists(OUTPUT_ISO_PATH):
 iso_size = os.path.getsize(OUTPUT_ISO_PATH)
 print(f"SUCCESS: Built {OUTPUT_ISO_PATH} ({iso_size:,} bytes, {iso_size / (1024**3):.2f} GB)")
 
-# 4. Copy to Downloads for user
+# 4. Copy to Desktop & Downloads for user
+desktop_dir = os.path.join(os.environ.get("USERPROFILE", r"C:\Users\Admin"), "Desktop")
+desktop_iso_path = os.path.join(desktop_dir, OUTPUT_ISO_NAME)
+print(f"Copying to {desktop_iso_path}...")
+shutil.copy2(OUTPUT_ISO_PATH, desktop_iso_path)
 print(f"Copying to {DOWNLOADS_ISO_PATH}...")
 shutil.copy2(OUTPUT_ISO_PATH, DOWNLOADS_ISO_PATH)
-dl_size = os.path.getsize(DOWNLOADS_ISO_PATH)
-print(f"Copied successfully ({dl_size:,} bytes).")
+print("Copied successfully to Desktop and Downloads.")
