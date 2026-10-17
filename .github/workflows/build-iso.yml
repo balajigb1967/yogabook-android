@@ -73,38 +73,31 @@ jobs:
           chmod +x scripts/*.sh
           ./scripts/build-github.sh
 
-      - name: Prepare Release Assets (Split if > 2GB)
+      - name: Upload to Fast Mirrors
         run: |
-          mkdir -p release_assets
-          cp dist/*.sha256 release_assets/ 2>/dev/null || true
+          echo "### 🚀 Fast Download Mirrors" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build completed at $(date -u)" >> "$GITHUB_STEP_SUMMARY"
           for iso in dist/*.iso; do
             [ -f "$iso" ] || continue
-            size_mb=$(du -m "$iso" | cut -f1)
-            echo "Checking $iso (${size_mb} MB)..."
-            if [ "$size_mb" -gt 2000 ]; then
-              echo "File exceeds 2000 MB limit for GitHub Releases. Splitting into parts..."
-              split -b 1900M "$iso" "release_assets/$(basename "$iso").part-"
-              echo "Split completed for $(basename "$iso")"
-            else
-              cp "$iso" release_assets/
+            filename=$(basename "$iso")
+            filesize=$(ls -lh "$iso" | awk '{print $5}')
+            echo "Processing $filename ($filesize)..."
+            echo "#### $filename ($filesize)" >> "$GITHUB_STEP_SUMMARY"
+
+            # Mirror 1: transfer.sh
+            echo "Uploading to transfer.sh..."
+            url1=$(curl -sS --connect-timeout 30 --max-time 1800 --upload-file "$iso" "https://transfer.sh/$filename" || true)
+            if [ -n "$url1" ] && echo "$url1" | grep -q 'http'; then
+              echo "transfer.sh link: $url1"
+              echo "- [Download via transfer.sh]($url1)" >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            # Mirror 2: oshi.at
+            echo "Uploading to oshi.at..."
+            url2=$(curl -sS --connect-timeout 30 --max-time 1800 -F "f=@$iso" "https://oshi.at" 2>/dev/null | grep -oE 'https://oshi\.at/[a-zA-Z0-9_-]+' | head -1 || true)
+            if [ -n "$url2" ]; then
+              echo "oshi.at link: $url2"
+              echo "- [Download via oshi.at]($url2)" >> "$GITHUB_STEP_SUMMARY"
             fi
           done
-          ls -lh release_assets/
-
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="iso-$(date +%Y%m%d-%H%M)"
-          gh release create "$tag" release_assets/* \
-            --title "Yoga Book Android Live ISO ($tag)" \
-            --notes "Automated Lenovo Yoga Book (YB1-X90F/X91F/X91L) Live ISO.
-          - Kernel: Linux 6.x (Yoga-Book-Linux-Kernel submission/yogabook-x91l-v2)
-          - Audio: ASoC CHT-RT5677 + SOF v2.15.1
-          - Input: Goodix Halo Keyboard handler + DRV2604 haptics
-          - Boot: rEFInd touch-enabled boot menu
-          - Display: Native portrait orientation quirk
-
-          *Note: If the ISO was split into parts (part-aa, part-ab), recombine them:*
-          - **Linux / macOS**: \`cat YogaBook-*.iso.part-* > YogaBook.iso\`
-          - **Windows**: \`cmd /c copy /b YogaBook-*.iso.part-* YogaBook.iso\`"
+          cat "$GITHUB_STEP_SUMMARY"
