@@ -84,20 +84,51 @@ jobs:
             echo "Processing $filename ($filesize)..."
             echo "#### $filename ($filesize)" >> "$GITHUB_STEP_SUMMARY"
 
-            # Mirror 1: transfer.sh
-            echo "Uploading to transfer.sh..."
-            url1=$(curl -sS --connect-timeout 30 --max-time 1800 --upload-file "$iso" "https://transfer.sh/$filename" || true)
-            if [ -n "$url1" ] && echo "$url1" | grep -q 'http'; then
-              echo "transfer.sh link: $url1"
-              echo "- [Download via transfer.sh]($url1)" >> "$GITHUB_STEP_SUMMARY"
+            # Mirror 1: GoFile (Supports multi-gigabyte ISOs with high bandwidth)
+            echo "Uploading $filename to GoFile..."
+            gofile_url=$(python3 -c "
+import urllib.request, json, subprocess, sys
+try:
+    req = urllib.request.Request('https://api.gofile.io/servers', headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        server = json.loads(r.read().decode())['data']['servers'][0]['name']
+    cmd = ['curl', '-sS', '--max-time', '1800', '-F', f'file=@$iso', f'https://{server}.gofile.io/contents/uploadfile']
+    res = subprocess.check_output(cmd).decode()
+    data = json.loads(res)
+    if data.get('status') == 'ok':
+        print(data['data']['downloadPage'])
+except Exception as e:
+    sys.stderr.write(f'GoFile upload error: {e}\n')
+" 2>&1 || true)
+            if [ -n "$gofile_url" ] && echo "$gofile_url" | grep -q '^https://'; then
+              echo "GoFile: $gofile_url"
+              echo "- ⚡ **GoFile (High Speed)**: [$gofile_url]($gofile_url)" >> "$GITHUB_STEP_SUMMARY"
             fi
 
-            # Mirror 2: oshi.at
-            echo "Uploading to oshi.at..."
-            url2=$(curl -sS --connect-timeout 30 --max-time 1800 -F "f=@$iso" "https://oshi.at" 2>/dev/null | grep -oE 'https://oshi\.at/[a-zA-Z0-9_-]+' | head -1 || true)
-            if [ -n "$url2" ]; then
-              echo "oshi.at link: $url2"
-              echo "- [Download via oshi.at]($url2)" >> "$GITHUB_STEP_SUMMARY"
+            # Mirror 2: Tmpfiles.org (Supports up to 10GB uploads)
+            echo "Uploading $filename to Tmpfiles.org..."
+            tmp_url=$(python3 -c "
+import subprocess, json, sys
+try:
+    cmd = ['curl', '-sS', '--max-time', '1800', '-F', f'file=@$iso', 'https://tmpfiles.org/api/v1/upload']
+    res = subprocess.check_output(cmd).decode()
+    data = json.loads(res)
+    url = data['data']['url']
+    print(url.replace('tmpfiles.org/', 'tmpfiles.org/dl/'))
+except Exception as e:
+    sys.stderr.write(f'Tmpfiles upload error: {e}\n')
+" 2>&1 || true)
+            if [ -n "$tmp_url" ] && echo "$tmp_url" | grep -q '^https://'; then
+              echo "Tmpfiles: $tmp_url"
+              echo "- ⚡ **Tmpfiles.org (Direct Download)**: [$tmp_url]($tmp_url)" >> "$GITHUB_STEP_SUMMARY"
+            fi
+
+            # Mirror 3: transfer.sh (Fallback with short 10s connect timeout)
+            echo "Uploading $filename to transfer.sh..."
+            url3=$(curl -sS --connect-timeout 10 --max-time 1800 --upload-file "$iso" "https://transfer.sh/$filename" 2>/dev/null || true)
+            if [ -n "$url3" ] && echo "$url3" | grep -q '^https://'; then
+              echo "transfer.sh link: $url3"
+              echo "- ⚡ **transfer.sh**: [$url3]($url3)" >> "$GITHUB_STEP_SUMMARY"
             fi
           done
           cat "$GITHUB_STEP_SUMMARY"
