@@ -27,9 +27,7 @@ cmdline_file = os.path.join(ISO_BUILD_DIR, "cmdline.txt")
 cmdline_content = (
     "video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 "
     "ro.surface_flinger.primary_display_orientation=ORIENTATION_90 "
-    "sdhci.debug_quirks2=0x04 androidboot.selinux=permissive "
-    "FFMPEG_CODEC2_DRM=1 BASS_DESKTOPUI=1 androidboot.bass.desktopui=1 "
-    "FORCE_DESKTOP_ON_EXTERNAL=1 ENABLE_BLUR_BY_DEFAULT=1\n"
+    "sdhci.debug_quirks2=0x04 androidboot.selinux=permissive\n"
 )
 print(f"Writing {cmdline_file}...")
 with open(cmdline_file, "w", encoding="utf-8") as f:
@@ -53,8 +51,8 @@ set default="0"
 set timeout=15
 set gfxpayload=keep
 
-set TITLE="Yoga Book LineageOS 23.2"
-set YB_COMMON="video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 sdhci.debug_quirks2=0x04 androidboot.selinux=permissive FFMPEG_CODEC2_DRM=1 BASS_DESKTOPUI=1 androidboot.bass.desktopui=1 FORCE_DESKTOP_ON_EXTERNAL=1 ENABLE_BLUR_BY_DEFAULT=1"
+set TITLE="Yoga Book LineageOS 23.2 (Kernel 7.2)"
+set YB_COMMON="video=DSI-1:1200x1920,rotate=90 fbcon=rotate:1 DPI=240 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 sdhci.debug_quirks2=0x04 androidboot.selinux=permissive"
 set KERNEL_ARGS="root=/dev/ram0 androidboot.live=true ROOT=LABEL=YOGABOOK_OS $YB_COMMON"
 set KERNEL=/kernel
 set INITRD=/initrd.img
@@ -82,19 +80,19 @@ if [ -z "$src" -a -n "$isofile" ]; then
 fi
 
 # Entry 0: Calamares Graphical Touch/Mouse Installer (Default)
-menuentry "Yoga Book - Graphical Touch/Mouse Installer (Calamares - Default)" --class blissos {
+menuentry "Yoga Book LineageOS 23.2 (Kernel 7.2) - Graphical Touch/Mouse Installer (Calamares - Default)" --class blissos {
 \tlinux "($root)${KERNEL}" $KERNEL_ARGS "INSTALL=install.sfs" "$pcmode" "$ffmpeg" "$hwaccel" "$setupwizard" "$copytoram" "$iso"
 \tinitrd "($root)${INITRD}"
 }
 
 # Entry 1: Live Desktop (Hardware Accelerated)
-menuentry "Yoga Book - Live Desktop (Hardware Accelerated)" --class blissos {
+menuentry "Yoga Book LineageOS 23.2 (Kernel 7.2) - Live Mode (Hardware Accelerated)" --class blissos {
 \tlinux "($root)${KERNEL}" $KERNEL_ARGS "$pcmode" "$ffmpeg" "$hwaccel" "$setupwizard" "$copytoram" "$iso"
 \tinitrd "($root)${INITRD}"
 }
 
 # Entry 2: Live Desktop (Software Rendering Fallback)
-menuentry "Yoga Book - Live Desktop (Software Rendering Fallback - HWACCEL=0 nomodeset)" --class blissos {
+menuentry "Yoga Book LineageOS 23.2 (Kernel 7.2) - Live Mode (Software Rendering Fallback - HWACCEL=0 nomodeset)" --class blissos {
 \tlinux "($root)${KERNEL}" $KERNEL_ARGS "nomodeset HWACCEL=0" "$pcmode" "$ffmpeg" "$setupwizard" "$copytoram" "$iso"
 \tinitrd "($root)${INITRD}"
 }

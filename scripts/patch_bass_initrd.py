@@ -81,6 +81,18 @@ EOFRP
 	echo 'exit 0' >> /install/usr/sbin/oem-install
 	chmod 755 /install/usr/sbin/oem-install
 
+	# Optimize Calamares OTA file copy (bs=4M gives 10x speedup over 512-byte default)
+	mkdir -p /install/usr/share/calamares/scripts
+	cat << 'EOFOTA' > /install/usr/share/calamares/scripts/ota
+#!/bin/bash
+[ "$2" ] || exit 1
+source=$1
+target=$2
+dd if="$source" of="$target" bs=4M conv=notrunc status=progress
+sync
+EOFOTA
+	chmod 755 /install/usr/share/calamares/scripts/ota
+
 	# Setuid Xorg for KMS DRM master permissions
 	chmod 4755 /install/usr/lib/xorg/Xorg 2>/dev/null || true
 	chmod 4755 /install/usr/bin/Xorg 2>/dev/null || true
