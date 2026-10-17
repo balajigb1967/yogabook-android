@@ -29,6 +29,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -71,26 +73,38 @@ jobs:
           chmod +x scripts/*.sh
           ./scripts/build-github.sh
 
-      - name: Upload ISO Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: yogabook-android-live-iso
-          path: |
-            dist/*.iso
-            dist/*.sha256
-          if-no-files-found: error
+      - name: Prepare Release Assets (Split if > 2GB)
+        run: |
+          mkdir -p release_assets
+          cp dist/*.sha256 release_assets/ 2>/dev/null || true
+          for iso in dist/*.iso; do
+            [ -f "$iso" ] || continue
+            size_mb=$(du -m "$iso" | cut -f1)
+            echo "Checking $iso (${size_mb} MB)..."
+            if [ "$size_mb" -gt 2000 ]; then
+              echo "File exceeds 2000 MB limit for GitHub Releases. Splitting into parts..."
+              split -b 1900M "$iso" "release_assets/$(basename "$iso").part-"
+              echo "Split completed for $(basename "$iso")"
+            else
+              cp "$iso" release_assets/
+            fi
+          done
+          ls -lh release_assets/
 
-      - name: Draft GitHub Release
-        if: github.event_name == 'workflow_dispatch'
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="iso-$(date +%Y%m%d-%H%M)"
-          gh release create "$tag" dist/*.iso dist/*.sha256 --draft \
+          gh release create "$tag" release_assets/* \
             --title "Yoga Book Android Live ISO ($tag)" \
-            --notes "Automated Lenovo Yoga Book (YB1-X90F/X91F/X91L) Live ISO built with GitHub Actions.
-            - Kernel: Linux 6.x (Yoga-Book-Linux-Kernel submission/yogabook-x91l-v2)
-            - Audio: ASoC CHT-RT5677 + SOF v2.15.1
-            - Input: Goodix Halo Keyboard handler + DRV2604 haptics
-            - Boot: rEFInd touch-enabled boot menu
-            - Display: Native portrait orientation quirk"
+            --notes "Automated Lenovo Yoga Book (YB1-X90F/X91F/X91L) Live ISO.
+          - Kernel: Linux 6.x (Yoga-Book-Linux-Kernel submission/yogabook-x91l-v2)
+          - Audio: ASoC CHT-RT5677 + SOF v2.15.1
+          - Input: Goodix Halo Keyboard handler + DRV2604 haptics
+          - Boot: rEFInd touch-enabled boot menu
+          - Display: Native portrait orientation quirk
+
+          *Note: If the ISO was split into parts (part-aa, part-ab), recombine them:*
+          - **Linux / macOS**: \`cat YogaBook-*.iso.part-* > YogaBook.iso\`
+          - **Windows**: \`cmd /c copy /b YogaBook-*.iso.part-* YogaBook.iso\`"
