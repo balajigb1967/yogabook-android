@@ -11,3 +11,6 @@ include device/mainline/generic/Generic_x86_64/BoardConfig.mk
 #  fix-build.config + fbcon.config + customizations.config)
 TARGET_KERNEL_CONFIG_EXT += \
     device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config
+
+TARGET_KERNEL_SOURCE := kernel/yogabook-7.2
+TARGET_KERNEL_CONFIG := x86_64_defconfig

@@ -20,7 +20,7 @@
 
   <!-- Kernels: Debian mainline source (primary, Yoga Book patches applied on top)
        and android-mainline (referenced by the generic tree's default config). -->
-  <project name="kernel-team/linux" path="external/debian-linux" remote="salsa" revision="debian/latest" />
+  <project name="Yoga-Book/Yoga-Book-Linux-Kernel" path="kernel/yogabook-7.2" remote="gh" revision="Yoga-Book-YB1-X91L" />
   <project name="kernel/common"     path="kernel/mainline/android-mainline" remote="goog" revision="android-mainline" />
 
   <!-- This repository (device overlay; build script rsyncs the local checkout over it) -->

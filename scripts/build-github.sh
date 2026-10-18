@@ -19,7 +19,7 @@ DIST="$HERE/dist"
 JOBS="$(nproc)"
 
 KERNEL_REPO="https://github.com/Yoga-Book/Yoga-Book-Linux-Kernel.git"
-KERNEL_BRANCH="submission/yogabook-x91l-v2"
+KERNEL_BRANCH="Yoga-Book-YB1-X91L"
 SOF_TAG="v2026.09.2"
 SOF_VER="2026.09.2"
 REFIND_VER="0.14.2"
