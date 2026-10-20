@@ -1,0 +1,128 @@
+From 321bb4680cb0ff74814292d3e8acfa66c8532577 Mon Sep 17 00:00:00 2001
+From: Maurizio Casciano <mauriziocasciano7@gmail.com>
+Date: Mon, 17 Aug 2026 02:39:18 +0200
+Subject: [PATCH] platform/x86: x86-android-tablets: Add Yoga Book audio GPIOs
+
+The Yoga Book YB1-X91F/L uses two GPIOs provided by the RT5677 codec
+itself. GPIO2 enables the second speaker amplifier and GPIO4 enables the
+headphone path, but ACPI does not map either signal.
+
+Describe both controls with a software node attached to the codec
+device. The same node identifies the RT5677 GPIO provider, allowing the
+Yoga Book ASoC machine driver to request the controls by function name.
+Reprobe the codec after adding the node so the provider is initialized
+with the new fwnode before the machine driver requests the descriptors.
+Attach and remove the node with the tablet description lifetime.
+
+Suggested-by: Dmitry Torokhov <dmitry.torokhov@gmail.com>
+Link: https://lore.kernel.org/platform-driver-x86/apLZF6b3F39z6bUc@google.com/
+Assisted-by: Codex:gpt-5.6-sol [sparse]
+Signed-off-by: Maurizio Casciano <mauriziocasciano7@gmail.com>
+---
+ .../platform/x86/x86-android-tablets/lenovo.c | 61 +++++++++++++++++++
+ 1 file changed, 61 insertions(+)
+
+diff --git a/drivers/platform/x86/x86-android-tablets/lenovo.c b/drivers/platform/x86/x86-android-tablets/lenovo.c
+index 88693b9a1..1b7a95f23 100644
+--- a/drivers/platform/x86/x86-android-tablets/lenovo.c
++++ b/drivers/platform/x86/x86-android-tablets/lenovo.c
+@@ -138,9 +138,26 @@ static const struct software_node lenovo_yb1_x91_drv2604_1_node = {
+ 	.properties = lenovo_yb1_x91_drv2604_1_props,
+ };
+ 
++static const struct software_node lenovo_yb1_x91_rt5677_node;
++
++static const struct property_entry lenovo_yb1_x91_rt5677_props[] = {
++	/* GPIO2 drives the second speaker amp; GPIO4 drives headphones. */
++	PROPERTY_ENTRY_GPIO("speaker-enable2-gpios",
++			    &lenovo_yb1_x91_rt5677_node, 2, GPIO_ACTIVE_HIGH),
++	PROPERTY_ENTRY_GPIO("headphone-enable-gpios",
++			    &lenovo_yb1_x91_rt5677_node, 4, GPIO_ACTIVE_HIGH),
++	{ }
++};
++
++static const struct software_node lenovo_yb1_x91_rt5677_node = {
++	.name = "rt5677",
++	.properties = lenovo_yb1_x91_rt5677_props,
++};
++
+ static const struct software_node *lenovo_yb1_x91_swnodes[] = {
+ 	&lenovo_yb1_x91_drv2604_0_node,
+ 	&lenovo_yb1_x91_drv2604_1_node,
++	&lenovo_yb1_x91_rt5677_node,
+ 	NULL
+ };
+ 
+@@ -345,11 +362,53 @@ static const struct x86_i2c_client_info lenovo_yogabook_x91_i2c_clients[] __init
+ 	},
+ };
+ 
++#define YB1_X91_RT5677_DEVICE "i2c-10EC5677:00"
+ #define YB1_X91_DRV2604_0_DEVICE "i2c-DRV2604:00"
+ #define YB1_X91_DRV2604_1_DEVICE "i2c-DRV2604:01"
+ 
++static struct device *lenovo_yb1_x91_rt5677_dev;
+ static struct device *lenovo_yb1_x91_drv2604_devs[2];
+ 
++static void lenovo_yb1_x91_add_audio_props(struct device *dev)
++{
++	struct device *codec_dev;
++	int ret;
++
++	codec_dev = bus_find_device_by_name(&i2c_bus_type, NULL,
++					    YB1_X91_RT5677_DEVICE);
++	if (!codec_dev) {
++		dev_warn(dev, "cannot find %s, audio will be unavailable\n",
++			 YB1_X91_RT5677_DEVICE);
++		return;
++	}
++
++	ret = device_add_software_node(codec_dev, &lenovo_yb1_x91_rt5677_node);
++	if (ret) {
++		put_device(codec_dev);
++		dev_warn(dev, "failed to add properties to %s: %d\n",
++			 YB1_X91_RT5677_DEVICE, ret);
++		return;
++	}
++
++	/* Ensure the codec GPIO provider is initialized with the new fwnode. */
++	ret = device_reprobe(codec_dev);
++	if (ret)
++		dev_warn(dev, "failed to reprobe %s: %d\n",
++			 YB1_X91_RT5677_DEVICE, ret);
++
++	lenovo_yb1_x91_rt5677_dev = codec_dev;
++}
++
++static void lenovo_yb1_x91_remove_audio_props(void)
++{
++	if (!lenovo_yb1_x91_rt5677_dev)
++		return;
++
++	device_remove_software_node(lenovo_yb1_x91_rt5677_dev);
++	put_device(lenovo_yb1_x91_rt5677_dev);
++	lenovo_yb1_x91_rt5677_dev = NULL;
++}
++
+ static void lenovo_yb1_x91_add_haptics_props(struct device *dev, int index,
+ 					     const char *name)
+ {
+@@ -392,6 +451,7 @@ static void lenovo_yb1_x91_remove_haptics_props(int index)
+ 
+ static int __init lenovo_yb1_x91_init(struct device *dev)
+ {
++	lenovo_yb1_x91_add_audio_props(dev);
+ 	lenovo_yb1_x91_add_haptics_props(dev, 0, YB1_X91_DRV2604_0_DEVICE);
+ 	lenovo_yb1_x91_add_haptics_props(dev, 1, YB1_X91_DRV2604_1_DEVICE);
+ 
+@@ -402,6 +462,7 @@ static void lenovo_yb1_x91_exit(void)
+ {
+ 	lenovo_yb1_x91_remove_haptics_props(1);
+ 	lenovo_yb1_x91_remove_haptics_props(0);
++	lenovo_yb1_x91_remove_audio_props();
+ }
+ 
+ const struct x86_dev_info lenovo_yogabook_x91_info __initconst = {
+-- 
+2.55.0.windows.3
+

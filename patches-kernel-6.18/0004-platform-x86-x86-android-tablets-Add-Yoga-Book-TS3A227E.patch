@@ -1,0 +1,76 @@
+From 9be1183dffda42d3d34df0fda8597dabce2dc4f9 Mon Sep 17 00:00:00 2001
+From: Maurizio Casciano <mauriziocasciano7@gmail.com>
+Date: Mon, 17 Aug 2026 02:38:45 +0200
+Subject: [PATCH] platform/x86: x86-android-tablets: Add Yoga Book TS3A227E
+
+The Yoga Book YB1-X91F/L firmware describes the TS3A227E headset
+detector as a secondary resource of the RT5677 codec rather than as an
+independent I2C device. No client is therefore created for it.
+
+Instantiate the device on I2C1 at address 0x3b, describe its GPIO
+interrupt, and provide the mic-bias setting used by the Yoga Book
+design. This lets the ASoC machine driver use jack and button detection.
+
+Signed-off-by: Maurizio Casciano <mauriziocasciano7@gmail.com>
+Assisted-by: Codex:gpt-5.6-sol [sparse]
+---
+ .../platform/x86/x86-android-tablets/lenovo.c | 29 ++++++++++++++++++-
+ 1 file changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/platform/x86/x86-android-tablets/lenovo.c b/drivers/platform/x86/x86-android-tablets/lenovo.c
+index a8c849ee0..88693b9a1 100644
+--- a/drivers/platform/x86/x86-android-tablets/lenovo.c
++++ b/drivers/platform/x86/x86-android-tablets/lenovo.c
+@@ -149,6 +149,16 @@ static const struct software_node * const lenovo_yb1_x91_drv2604_nodes[] = {
+ 	&lenovo_yb1_x91_drv2604_1_node,
+ };
+ 
++static const struct property_entry lenovo_yb1_ts3a227e_props[] = {
++	/* Value taken from the Lenovo Android kernel code drop. */
++	PROPERTY_ENTRY_U32("ti,micbias", 7),
++	{ }
++};
++
++static const struct software_node lenovo_yb1_ts3a227e_node = {
++	.properties = lenovo_yb1_ts3a227e_props,
++};
++
+ static const struct x86_i2c_client_info lenovo_yb1_x90_i2c_clients[] __initconst = {
+ 	{
+ 		/* BQ27542 fuel-gauge */
+@@ -304,7 +314,7 @@ const struct x86_dev_info lenovo_yogabook_x90_info __initconst = {
+ 	.init = lenovo_yb1_x90_init,
+ };
+ 
+-/* Lenovo Yoga Book X91F/L Windows tablet needs manual instantiation of the fuel-gauge client */
++/* Lenovo Yoga Book X91F/L Windows tablet needs extra platform descriptions. */
+ static const struct x86_i2c_client_info lenovo_yogabook_x91_i2c_clients[] __initconst = {
+ 	{
+ 		/* BQ27542 fuel-gauge */
+@@ -315,6 +325,23 @@ static const struct x86_i2c_client_info lenovo_yogabook_x91_i2c_clients[] __init
+ 			.swnode = &fg_bq25890_supply_node,
+ 		},
+ 		.adapter_path = "\\_SB_.PCI0.I2C1",
++	}, {
++		/* The jack-detection IC is described as a secondary RT5677 resource. */
++		.board_info = {
++			.type = "ts3a227e",
++			.addr = 0x3b,
++			.dev_name = "ts3a227e",
++			.swnode = &lenovo_yb1_ts3a227e_node,
++		},
++		.adapter_path = "\\_SB_.PCI0.I2C1",
++		.irq_data = {
++			.type = X86_ACPI_IRQ_TYPE_GPIOINT,
++			.chip = "INT33FF:00",
++			.index = 77,
++			.trigger = ACPI_EDGE_SENSITIVE,
++			.polarity = ACPI_ACTIVE_LOW,
++			.con_id = "ts3a227e_irq",
++		},
+ 	},
+ };
+ 
+-- 
+2.55.0.windows.3
+

@@ -1,0 +1,47 @@
+From a500fec1dcd80e9126c72a3319447871bcd426c7 Mon Sep 17 00:00:00 2001
+From: Maurizio Casciano <mauriziocasciano7@gmail.com>
+Date: Mon, 17 Aug 2026 02:47:37 +0200
+Subject: [PATCH] ASoC: Intel: cht: Add Yoga Book RT5677 machine entry
+
+The Yoga Book YB1-X91F/L exposes its RT5677 codec as ACPI device
+10EC5677. Add a Cherry Trail machine-table entry that supplies the legacy
+SST firmware and board names and the SOF topology name.
+
+The Intel DSP configuration selects one firmware path at probe time. SST
+loads intel/fw_sst_22a8.bin and uses the cht_rt5677 board name; SOF loads
+sof-cht-rt5677.tplg through the standard firmware search path. The same
+kernel and machine entry were boot-tested with both paths on a YB1-X91L.
+
+The SOF topology sources are maintained and distributed separately by the
+SOF project.
+
+Assisted-by: Codex:gpt-5.6-sol sparse
+Co-developed-by: Yauhen Kharuzhy <jekhor@gmail.com>
+Signed-off-by: Yauhen Kharuzhy <jekhor@gmail.com>
+Signed-off-by: Maurizio Casciano <mauriziocasciano7@gmail.com>
+---
+ sound/soc/intel/common/soc-acpi-intel-cht-match.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/sound/soc/intel/common/soc-acpi-intel-cht-match.c b/sound/soc/intel/common/soc-acpi-intel-cht-match.c
+index e4c3492a0..442ef30ff 100644
+--- a/sound/soc/intel/common/soc-acpi-intel-cht-match.c
++++ b/sound/soc/intel/common/soc-acpi-intel-cht-match.c
+@@ -137,6 +137,14 @@ struct snd_soc_acpi_mach  snd_soc_acpi_intel_cherrytrail_machines[] = {
+ 		.board = "cht-bsw",
+ 		.sof_tplg_filename = "sof-cht-rt5670.tplg",
+ 	},
++	{
++		/* Lenovo Yoga Book YB1-X91F/L */
++		.id = "10EC5677",
++		.drv_name = "cht-rt5677",
++		.fw_filename = "intel/fw_sst_22a8.bin",
++		.board = "cht_rt5677",
++		.sof_tplg_filename = "sof-cht-rt5677.tplg",
++	},
+ 	{
+ 		.comp_ids = &rt5645_comp_ids,
+ 		.drv_name = "cht-bsw-rt5645",
+-- 
+2.55.0.windows.3
+

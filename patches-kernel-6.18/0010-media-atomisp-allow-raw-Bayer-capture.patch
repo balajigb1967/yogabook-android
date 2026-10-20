@@ -1,0 +1,118 @@
+From 5a163a69a3cb3b139f2c7ba5eee5b32bac575d27 Mon Sep 17 00:00:00 2001
+From: Maurizio Casciano <mauriziocasciano7@gmail.com>
+Date: Mon, 24 Aug 2026 20:23:34 +0200
+Subject: [PATCH] media: atomisp: allow raw Bayer capture
+
+AtomISP currently rejects all raw formats and silently substitutes
+YUV420. This prevents userspace camera processing stacks from obtaining
+unprocessed sensor frames.
+
+Enumerate only the raw format matching the sensor media-bus code and
+reconcile raw requests with the code selected by the sensor. Userspace
+opts in by selecting that raw V4L2 pixel format with VIDIOC_S_FMT.
+
+Raw formats expose the full sensor transport frame so ISP2401 can use
+its copy pipeline. Processed formats retain the existing global padding
+behavior; selecting a smaller receiver crop remains a userspace pipeline
+decision.
+
+Signed-off-by: Maurizio Casciano <mauriziocasciano7@gmail.com>
+Assisted-by: LLM sparse
+---
+ .../staging/media/atomisp/pci/atomisp_cmd.c   | 14 +++++++++++---
+ .../staging/media/atomisp/pci/atomisp_ioctl.c | 19 ++++++++++++++++---
+ 2 files changed, 27 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/staging/media/atomisp/pci/atomisp_cmd.c b/drivers/staging/media/atomisp/pci/atomisp_cmd.c
+index 759effdb2..99d2b73b1 100644
+--- a/drivers/staging/media/atomisp/pci/atomisp_cmd.c
++++ b/drivers/staging/media/atomisp/pci/atomisp_cmd.c
+@@ -3815,8 +3815,7 @@ int atomisp_try_fmt(struct atomisp_device *isp, struct v4l2_pix_format *f,
+ 	int ret;
+ 
+ 	fmt = atomisp_get_format_bridge(f->pixelformat);
+-	/* Currently, raw formats are broken!!! */
+-	if (!fmt || fmt->sh_fmt == IA_CSS_FRAME_FORMAT_RAW) {
++	if (!fmt) {
+ 		f->pixelformat = V4L2_PIX_FMT_YUV420;
+ 
+ 		fmt = atomisp_get_format_bridge(f->pixelformat);
+@@ -3838,7 +3837,10 @@ int atomisp_try_fmt(struct atomisp_device *isp, struct v4l2_pix_format *f,
+ 	 * resolution + padding. Add padding here and remove it again after
+ 	 * the set_fmt call, like atomisp_set_fmt_to_snr() does.
+ 	 */
+-	atomisp_get_pix_padding(isp, f, &padding);
++	if (fmt->sh_fmt == IA_CSS_FRAME_FORMAT_RAW)
++		padding = (struct v4l2_area) { };
++	else
++		atomisp_get_pix_padding(isp, f, &padding);
+ 	v4l2_fill_mbus_format(&ffmt, f, fmt->mbus_code);
+ 	ffmt.width += padding.width;
+ 	ffmt.height += padding.height;
+@@ -3858,6 +3860,12 @@ int atomisp_try_fmt(struct atomisp_device *isp, struct v4l2_pix_format *f,
+ 		return -EINVAL;
+ 	}
+ 
++	if (fmt->sh_fmt == IA_CSS_FRAME_FORMAT_RAW &&
++	    fmt->mbus_code != snr_fmt->mbus_code) {
++		fmt = snr_fmt;
++		f->pixelformat = fmt->pixelformat;
++	}
++
+ 	f->width = ffmt.width - padding.width;
+ 	f->height = ffmt.height - padding.height;
+ 
+diff --git a/drivers/staging/media/atomisp/pci/atomisp_ioctl.c b/drivers/staging/media/atomisp/pci/atomisp_ioctl.c
+index 87c29a940..aa6d13a4d 100644
+--- a/drivers/staging/media/atomisp/pci/atomisp_ioctl.c
++++ b/drivers/staging/media/atomisp/pci/atomisp_ioctl.c
+@@ -537,12 +537,21 @@ static int atomisp_enum_framesizes(struct file *file, void *priv,
+ 		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+ 		.code = input->code,
+ 	};
++	const struct atomisp_format_bridge *format;
+ 	struct v4l2_subdev_state *act_sd_state;
++	struct v4l2_area padding = {
++		.width = pad_w,
++		.height = pad_h,
++	};
+ 	int ret;
+ 
+ 	if (!input->sensor)
+ 		return -EINVAL;
+ 
++	format = atomisp_get_format_bridge(fsize->pixel_format);
++	if (!format)
++		return -EINVAL;
++
+ 	if (input->crop_support)
+ 		return atomisp_enum_framesizes_crop(isp, fsize);
+ 
+@@ -554,9 +563,12 @@ static int atomisp_enum_framesizes(struct file *file, void *priv,
+ 	if (ret)
+ 		return ret;
+ 
++	if (format->sh_fmt == IA_CSS_FRAME_FORMAT_RAW)
++		padding = (struct v4l2_area) { };
++
+ 	fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
+-	fsize->discrete.width = fse.max_width - pad_w;
+-	fsize->discrete.height = fse.max_height - pad_h;
++	fsize->discrete.width = fse.max_width - padding.width;
++	fsize->discrete.height = fse.max_height - padding.height;
+ 
+ 	return 0;
+ }
+@@ -630,7 +642,8 @@ static int atomisp_enum_fmt_cap(struct file *file, void *fh,
+ 		 *
+ 		 * FIXME: fix the pipeline to allow sensor format too.
+ 		 */
+-		if (format->sh_fmt == IA_CSS_FRAME_FORMAT_RAW)
++		if (format->sh_fmt == IA_CSS_FRAME_FORMAT_RAW &&
++		    format->mbus_code != code.code)
+ 			continue;
+ 
+ 		/* Found a match. Now let's pick f->index'th one. */
+-- 
+2.55.0.windows.3
+

@@ -1,0 +1,127 @@
+name: Build Yoga Book Kernel 6.18
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'patches-kernel-6.18/**'
+      - 'device/yogabook/**'
+      - '.github/workflows/build-kernel-618.yml'
+
+jobs:
+  build-kernel:
+    name: Build Patched Kernel 6.18 (Zenith + Yoga Book RT5677)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout yogabook-android
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo docker system prune -a -f --volumes 2>/dev/null || true
+          df -h /
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential bc bison flex \
+            libssl-dev libelf-dev libncurses-dev \
+            git curl rsync
+
+      - name: Clone android-generic/kernel-zenith (6.18_android-x86)
+        run: |
+          git clone --depth 1 --branch 6.18_android-x86 https://github.com/android-generic/kernel-zenith.git $HOME/kernel-zenith
+          echo "Cloned kernel-zenith commit:"
+          git -C $HOME/kernel-zenith log -1 --oneline
+
+      - name: Apply Yoga Book Hardware Patches
+        run: |
+          cd $HOME/kernel-zenith
+          echo "=== Applying Yoga Book 6.18 Hardware Backport Patches ==="
+          for p in "${GITHUB_WORKSPACE}"/patches-kernel-6.18/*.patch; do
+            echo "[*] Applying $(basename "$p")..."
+            if git apply --check "$p" 2>/dev/null; then
+              git apply --whitespace=nowarn "$p"
+              echo "  [✓] Applied $(basename "$p")"
+            else
+              echo "  [~] Retrying with 3-way merge..."
+              git apply --3way --whitespace=nowarn "$p" || patch -p1 -N < "$p" || true
+            fi
+          done
+          git status -s
+
+      - name: Configure Kernel with Yoga Book Fragment
+        run: |
+          cd $HOME/kernel-zenith
+          make x86_64_defconfig
+          # Merge Android x86 / Yoga Book config additions
+          if [ -f "${GITHUB_WORKSPACE}/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config" ]; then
+            bash scripts/kconfig/merge_config.sh -m .config "${GITHUB_WORKSPACE}/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config"
+          fi
+          # Strip excessive debuginfo to keep build fast and compact
+          ./scripts/config --disable DEBUG_INFO \
+                           --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT \
+                           --disable DEBUG_INFO_DWARF4 \
+                           --disable DEBUG_INFO_DWARF5 \
+                           --disable DEBUG_INFO_BTF \
+                           --enable DEBUG_INFO_NONE \
+                           --set-val WERROR n
+          make olddefconfig
+          echo "Verifying RT5677 config symbols:"
+          grep -E 'RT5677|TS3A227E|DRV260X' .config || true
+
+      - name: Compile Kernel and Modules
+        run: |
+          cd $HOME/kernel-zenith
+          JOBS=$(nproc)
+          echo "Building kernel with $JOBS parallel jobs..."
+          make -j"$JOBS" bzImage modules
+
+      - name: Stage Kernel & Modules Package
+        run: |
+          cd $HOME/kernel-zenith
+          mkdir -p $HOME/staging/modules
+          cp -v arch/x86/boot/bzImage $HOME/staging/kernel
+          make INSTALL_MOD_PATH=$HOME/staging/modules_raw INSTALL_MOD_STRIP=1 modules_install
+          
+          # Extract the exact kernel release string
+          KVER=$(ls $HOME/staging/modules_raw/lib/modules/)
+          echo "Built kernel version: $KVER"
+          echo "KVER=$KVER" >> $GITHUB_ENV
+          
+          # Move modules into a clean archive
+          mkdir -p $HOME/staging/output
+          cp -v $HOME/staging/kernel $HOME/staging/output/kernel
+          tar -C $HOME/staging/modules_raw/lib/modules -czf $HOME/staging/output/modules-${KVER}.tar.gz ${KVER}
+          
+          # List generated files
+          ls -la $HOME/staging/output/
+
+      - name: Upload Kernel Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yogabook-kernel-6.18-${{ env.KVER }}
+          path: /home/runner/staging/output/*
+          retention-days: 14
+
+      - name: Create GitHub Release
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kernel-6.18-${{ env.KVER }}
+          name: "Yoga Book Kernel 6.18 (${{ env.KVER }}) - RT5677 Audio & Haptics"
+          body: |
+            ## Yoga Book Kernel 6.18 with Working Speaker Audio & Haptics
+            - **Base**: `android-generic/kernel-zenith` branch `6.18_android-x86`
+            - **Audio Codec**: Realtek RT5677 + Intel SST DSP (`snd-soc-sst-cht-rt5677`)
+            - **Jack Detection**: TS3A227E headset detector
+            - **Haptics**: TI DRV2604 dual haptic motors
+            - **Display**: Native portrait scanout quirks
+          files: /home/runner/staging/output/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
