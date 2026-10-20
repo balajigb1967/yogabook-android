@@ -51,9 +51,16 @@ if [ ! -d "$KSRC/.git" ]; then
   git clone --depth 1 --single-branch -b "$KERNEL_BRANCH" "$KERNEL_REPO" "$KSRC"
 fi
 
-say "Configuring Kernel"
+say "Configuring Kernel (Unified Android 16 + Yoga Book Hardware)"
 cd "$KSRC"
-make x86_64_defconfig
+
+if [ -f "$HERE/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config" ]; then
+  say "Applying unified Android 16 + Yoga Book kernel configuration"
+  cp -vf "$HERE/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config" .config
+  make olddefconfig
+else
+  make x86_64_defconfig
+fi
 
 # Strip bloat and debug symbols to prevent disk exhaustion and pahole/BTF build failures
 ./scripts/config --disable DEBUG_INFO \
@@ -63,16 +70,7 @@ make x86_64_defconfig
                  --disable DEBUG_INFO_BTF \
                  --enable DEBUG_INFO_NONE \
                  --set-val WERROR n
-
-# Merge our Yoga Book hardware fragment
-if [ -f "$HERE/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config" ]; then
-  bash scripts/kconfig/merge_config.sh -m .config "$HERE/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config"
-  ./scripts/config --disable DEBUG_INFO \
-                   --disable DEBUG_INFO_BTF \
-                   --enable DEBUG_INFO_NONE \
-                   --set-val WERROR n
-  make olddefconfig
-fi
+make olddefconfig
 
 say "Compiling Kernel (bzImage & modules)"
 echo "Disk space before kernel compilation:"
@@ -525,7 +523,7 @@ search --no-floppy --file --set=root /kernel
 if [ -n "$root" ]; then
     menuentry "Yoga Book Android-x86" {
         set gfxpayload=keep
-        linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive sdhci.debug_quirks2=0x04 quiet
+        linux /kernel androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive quiet
         initrd /initrd.img
     }
 fi
@@ -556,7 +554,7 @@ for f in /usr/share/grub/unicode.pf2 /boot/grub/fonts/unicode.pf2; do
   fi
 done
 
-CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID ROOT=\"/dev/mmcblk0p1 /dev/mmcblk1p1 /dev/sda1\" sdhci.debug_quirks2=0x04"
+CMDLINE="androidboot.hardware=android_x86 ro.surface_flinger.primary_display_orientation=ORIENTATION_90 androidboot.selinux=permissive SRC=/ANDRID ROOT=\"/dev/mmcblk0p1 /dev/mmcblk1p1 /dev/sda1\""
 
 if [ -n "$LINEAGE_GSI_URL" ]; then
   OS_TITLE="Yoga Book LineageOS $LINEAGE_VER (x86_64)"
