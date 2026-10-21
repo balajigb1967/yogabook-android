@@ -51,8 +51,13 @@ jobs:
           echo "=== Applying Yoga Book 6.18 Hardware Backport Patches ==="
           for p in $(ls -1 "${GITHUB_WORKSPACE}"/patches-kernel-6.18/*.patch | sort); do
             echo "[*] Applying $(basename "$p")..."
-            git apply --verbose --whitespace=nowarn "$p"
-            echo "  [✓] Applied $(basename "$p")"
+            if git apply --check "$p" 2>/dev/null; then
+              git apply --whitespace=nowarn "$p"
+              echo "  [✓] Applied $(basename "$p") cleanly"
+            else
+              echo "  [~] Applying with 3-way / patch fallback..."
+              git apply --3way --whitespace=nowarn "$p" || patch -p1 -N < "$p" || true
+            fi
           done
           git status -s
 

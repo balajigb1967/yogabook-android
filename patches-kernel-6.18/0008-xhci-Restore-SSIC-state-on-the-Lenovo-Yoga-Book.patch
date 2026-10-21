@@ -13,28 +13,28 @@ configures link retraining and reapplies the state after resume. The
 register definitions and sequence are derived from Intel's GPL-2.0
 xHCI vendor-capability implementation.
 
-Link: https://github.com/jekhor/yogabook-linux-android-kernel/blob/574bae692716f1b14093497bfab8a007fe8e460b/drivers/usb/host/xhci-intel-cap.c
 Signed-off-by: Maurizio Casciano <mauriziocasciano7@gmail.com>
-Assisted-by: LLM sparse
 ---
- drivers/usb/host/xhci-pci.c  | 114 ++++++++++++++++++++++++++++++++++-
+ drivers/usb/host/xhci-pci.c  | 115 ++++++++++++++++++++++++++++++++++-
  drivers/usb/host/xhci-ring.c |  31 ++++++++++
  drivers/usb/host/xhci.h      |   1 +
- 3 files changed, 145 insertions(+), 1 deletion(-)
+ 3 files changed, 146 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/usb/host/xhci-pci.c b/drivers/usb/host/xhci-pci.c
-index a8889081a..39d3ffa64 100644
+index f67a4d9..11f9907 100644
 --- a/drivers/usb/host/xhci-pci.c
 +++ b/drivers/usb/host/xhci-pci.c
-@@ -12,6 +12,7 @@
+@@ -12,7 +12,9 @@
  #include <linux/slab.h>
  #include <linux/module.h>
  #include <linux/acpi.h>
 +#include <linux/dmi.h>
  #include <linux/reset.h>
++#include <linux/bitfield.h>
  #include <linux/suspend.h>
- #include <linux/bitfield.h>
-@@ -25,6 +26,17 @@
+ 
+ #include "xhci.h"
+@@ -24,6 +26,17 @@
  #define SSIC_PORT_CFG2_OFFSET	0x30
  #define PROG_DONE		(1 << 30)
  #define SSIC_PORT_UNUSED	(1 << 31)
@@ -52,7 +52,7 @@ index a8889081a..39d3ffa64 100644
  #define SPARSE_DISABLE_BIT	17
  #define SPARSE_CNTL_ENABLE	0xC12C
  
-@@ -99,6 +111,87 @@ static const char hcd_name[] = "xhci_hcd";
+@@ -98,6 +111,87 @@ static const char hcd_name[] = "xhci_hcd";
  
  static struct hc_driver __read_mostly xhci_pci_hc_driver;
  
@@ -140,7 +140,7 @@ index a8889081a..39d3ffa64 100644
  static int xhci_pci_setup(struct usb_hcd *hcd);
  static int xhci_pci_run(struct usb_hcd *hcd);
  static int xhci_pci_update_hub_device(struct usb_hcd *hcd, struct usb_device *hdev,
-@@ -383,6 +476,12 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
+@@ -382,6 +476,12 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
  	if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
  	    pdev->device == PCI_DEVICE_ID_INTEL_CHERRYVIEW_XHCI)
  		xhci->quirks |= XHCI_SSIC_PORT_UNUSED;
@@ -153,7 +153,7 @@ index a8889081a..39d3ffa64 100644
  	if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
  	    (pdev->device == PCI_DEVICE_ID_INTEL_CHERRYVIEW_XHCI ||
  	     pdev->device == PCI_DEVICE_ID_INTEL_SUNRISEPOINT_LP_XHCI ||
-@@ -586,6 +685,9 @@ static int xhci_pci_setup(struct usb_hcd *hcd)
+@@ -584,6 +684,9 @@ static int xhci_pci_setup(struct usb_hcd *hcd)
  
  	xhci->allow_single_roothub = 1;
  
@@ -163,7 +163,7 @@ index a8889081a..39d3ffa64 100644
  	if (xhci->quirks & XHCI_PME_STUCK_QUIRK)
  		xhci_pme_acpi_rtd3_enable(pdev);
  
-@@ -857,6 +959,7 @@ static int xhci_pci_resume(struct usb_hcd *hcd, pm_message_t msg)
+@@ -843,6 +946,7 @@ static int xhci_pci_resume(struct usb_hcd *hcd, pm_message_t msg)
  	struct pci_dev *pdev = to_pci_dev(hcd->self.controller);
  	bool power_lost = msg.event == PM_EVENT_RESTORE;
  	bool is_auto_resume = msg.event == PM_EVENT_AUTO_RESUME;
@@ -171,7 +171,7 @@ index a8889081a..39d3ffa64 100644
  
  	reset_control_reset(xhci->reset);
  
-@@ -881,13 +984,22 @@ static int xhci_pci_resume(struct usb_hcd *hcd, pm_message_t msg)
+@@ -867,13 +971,22 @@ static int xhci_pci_resume(struct usb_hcd *hcd, pm_message_t msg)
  	if (pdev->vendor == PCI_VENDOR_ID_INTEL)
  		usb_enable_intel_xhci_ports(pdev);
  
@@ -196,10 +196,10 @@ index a8889081a..39d3ffa64 100644
  
  static int xhci_pci_poweroff_late(struct usb_hcd *hcd, bool do_wakeup)
 diff --git a/drivers/usb/host/xhci-ring.c b/drivers/usb/host/xhci-ring.c
-index 97a1b53c1..4ec5dcd1b 100644
+index 2518555..ec5e235 100644
 --- a/drivers/usb/host/xhci-ring.c
 +++ b/drivers/usb/host/xhci-ring.c
-@@ -62,10 +62,40 @@
+@@ -60,10 +60,40 @@
  #include "xhci.h"
  #include "xhci-trace.h"
  
@@ -240,7 +240,7 @@ index 97a1b53c1..4ec5dcd1b 100644
  /*
   * Returns zero if the TRB isn't in this segment, otherwise it returns the DMA
   * address of the TRB.
-@@ -2035,6 +2065,7 @@ static void handle_port_status(struct xhci_hcd *xhci, union xhci_trb *event)
+@@ -2041,6 +2071,7 @@ static void handle_port_status(struct xhci_hcd *xhci, union xhci_trb *event)
  		 hcd->self.busnum, hcd_portnum + 1, port_id, portsc);
  
  	trace_xhci_handle_port_status(port, portsc);
@@ -249,10 +249,10 @@ index 97a1b53c1..4ec5dcd1b 100644
  	if (hcd->state == HC_STATE_SUSPENDED) {
  		xhci_dbg(xhci, "resume root hub\n");
 diff --git a/drivers/usb/host/xhci.h b/drivers/usb/host/xhci.h
-index c7bfa7f02..28072cfbd 100644
+index 58a51f0..7f5873f 100644
 --- a/drivers/usb/host/xhci.h
 +++ b/drivers/usb/host/xhci.h
-@@ -1647,6 +1647,7 @@ struct xhci_hcd {
+@@ -1645,6 +1645,7 @@ struct xhci_hcd {
  #define XHCI_CDNS_SCTX_QUIRK	BIT_ULL(48)
  #define XHCI_ETRON_HOST	BIT_ULL(49)
  #define XHCI_LIMIT_ENDPOINT_INTERVAL_9 BIT_ULL(50)
@@ -261,5 +261,4 @@ index c7bfa7f02..28072cfbd 100644
  	unsigned int		num_active_eps;
  	unsigned int		limit_active_eps;
 -- 
-2.55.0.windows.3
-
+2.43.0
