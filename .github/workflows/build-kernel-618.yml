@@ -70,8 +70,11 @@ jobs:
             bash scripts/kconfig/merge_config.sh -m .config "${GITHUB_WORKSPACE}/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config"
           fi
           # Enable KernelSU and Yoga Book hardware symbols
-          ./scripts/config --enable KSU \
+          ./scripts/config --enable KPROBES \
+                           --enable KPROBE_EVENTS \
+                           --enable KSU \
                            --enable KSU_DEBUG \
+                           --enable KSU_X86_PATCH_SYSCALL_DISPATCHER \
                            --enable SND_SOC_INTEL_CHT_RT5677_MACH \
                            --enable SND_SOC_RT5677 \
                            --enable SND_SOC_RT5677_SPI \
