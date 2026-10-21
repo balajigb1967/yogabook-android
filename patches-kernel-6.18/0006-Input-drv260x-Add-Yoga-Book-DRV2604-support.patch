@@ -1,0 +1,51 @@
+From b3bd39de6a7d9ffe12d7f9a2ce9f0d5dc646c21f Mon Sep 17 00:00:00 2001
+From: Maurizio Casciano <mauriziocasciano7@gmail.com>
+Date: Tue, 20 Oct 2026 17:30:00 +0530
+Subject: [PATCH] Input: drv260x: Add Yoga Book DRV2604 I2C and ACPI support
+
+The Lenovo Yoga Book YB1-X91F and YB1-X91L integrate dual TI DRV2604 haptic
+controllers. ACPI enumerates these devices as DRV2604:00 and DRV2604:01.
+Add DRV2604 device IDs to drv260x_id and an ACPI matching table so that the
+drv260x driver binds successfully.
+
+Signed-off-by: Maurizio Casciano <mauriziocasciano7@gmail.com>
+---
+ drivers/input/misc/drv260x.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/input/misc/drv260x.c b/drivers/input/misc/drv260x.c
+index 6c5c4c537..1eb71e6ad 100644
+--- a/drivers/input/misc/drv260x.c
++++ b/drivers/input/misc/drv260x.c
+@@ -601,6 +601,9 @@ static DEFINE_SIMPLE_DEV_PM_OPS(drv260x_pm_ops, drv260x_suspend, drv260x_resume);
+ 
+ static const struct i2c_device_id drv260x_id[] = {
+ 	{ "drv2605l" },
++	{ "drv2604" },
++	{ "drv2604l" },
++	{ "drv2605" },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(i2c, drv260x_id);
+@@ -613,10 +616,17 @@ static const struct of_device_id drv260x_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, drv260x_of_match);
+ 
++static const struct acpi_device_id drv260x_acpi_match[] = {
++	{ "DRV2604", 0 },
++	{ "DRV2605", 0 },
++	{ }
++};
++MODULE_DEVICE_TABLE(acpi, drv260x_acpi_match);
++
+ static struct i2c_driver drv260x_driver = {
+ 	.probe		= drv260x_probe,
+ 	.driver		= {
+ 		.name	= "drv260x-haptics",
+ 		.of_match_table = drv260x_of_match,
++		.acpi_match_table = ACPI_PTR(drv260x_acpi_match),
+ 		.pm	= pm_sleep_ptr(&drv260x_pm_ops),
+ 	},
+ 	.id_table = drv260x_id,
+-- 
+2.43.0

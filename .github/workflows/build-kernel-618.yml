@@ -39,19 +39,20 @@ jobs:
           echo "Cloned kernel-zenith commit:"
           git -C $HOME/kernel-zenith log -1 --oneline
 
+      - name: Integrate KernelSU
+        run: |
+          cd $HOME/kernel-zenith
+          echo "=== Integrating KernelSU into Kernel 6.18 Tree ==="
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+
       - name: Apply Yoga Book Hardware Patches
         run: |
           cd $HOME/kernel-zenith
           echo "=== Applying Yoga Book 6.18 Hardware Backport Patches ==="
-          for p in "${GITHUB_WORKSPACE}"/patches-kernel-6.18/*.patch; do
+          for p in $(ls -1 "${GITHUB_WORKSPACE}"/patches-kernel-6.18/*.patch | sort); do
             echo "[*] Applying $(basename "$p")..."
-            if git apply --check "$p" 2>/dev/null; then
-              git apply --whitespace=nowarn "$p"
-              echo "  [✓] Applied $(basename "$p")"
-            else
-              echo "  [~] Retrying with 3-way merge..."
-              git apply --3way --whitespace=nowarn "$p" || patch -p1 -N < "$p" || true
-            fi
+            git apply --verbose --whitespace=nowarn "$p"
+            echo "  [✓] Applied $(basename "$p")"
           done
           git status -s
 
@@ -63,8 +64,17 @@ jobs:
           if [ -f "${GITHUB_WORKSPACE}/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config" ]; then
             bash scripts/kconfig/merge_config.sh -m .config "${GITHUB_WORKSPACE}/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config"
           fi
-          # Strip excessive debuginfo to keep build fast and compact
-          ./scripts/config --disable DEBUG_INFO \
+          # Enable KernelSU and Yoga Book hardware symbols
+          ./scripts/config --enable KSU \
+                           --enable KSU_DEBUG \
+                           --enable SND_SOC_INTEL_CHT_RT5677_MACH \
+                           --enable SND_SOC_RT5677 \
+                           --enable SND_SOC_RT5677_SPI \
+                           --enable INPUT_DRV260X \
+                           --enable INTEL_CHT_MODEM \
+                           --enable VIDEO_ATOMISP \
+                           --enable VIDEO_WV517S \
+                           --disable DEBUG_INFO \
                            --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT \
                            --disable DEBUG_INFO_DWARF4 \
                            --disable DEBUG_INFO_DWARF5 \
@@ -72,8 +82,8 @@ jobs:
                            --enable DEBUG_INFO_NONE \
                            --set-val WERROR n
           make olddefconfig
-          echo "Verifying RT5677 config symbols:"
-          grep -E 'RT5677|TS3A227E|DRV260X' .config || true
+          echo "Verifying RT5677, DRV260X, and KSU config symbols:"
+          grep -E 'RT5677|TS3A227E|DRV260X|KSU|ATOMISP|CHT_MODEM' .config || true
 
       - name: Compile Kernel and Modules
         run: |
@@ -110,18 +120,21 @@ jobs:
           retention-days: 14
 
       - name: Create GitHub Release
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: kernel-6.18-${{ env.KVER }}
-          name: "Yoga Book Kernel 6.18 (${{ env.KVER }}) - RT5677 Audio & Haptics"
+          name: "Yoga Book Kernel 6.18 (${{ env.KVER }}) - RT5677 Audio, Haptics & KernelSU"
           body: |
-            ## Yoga Book Kernel 6.18 with Working Speaker Audio & Haptics
+            ## Yoga Book Kernel 6.18 with Audio, Haptics, Camera, LTE & KernelSU
             - **Base**: `android-generic/kernel-zenith` branch `6.18_android-x86`
+            - **KernelSU**: Integrated for root and driver module hooking
             - **Audio Codec**: Realtek RT5677 + Intel SST DSP (`snd-soc-sst-cht-rt5677`)
-            - **Jack Detection**: TS3A227E headset detector
-            - **Haptics**: TI DRV2604 dual haptic motors
-            - **Display**: Native portrait scanout quirks
+            - **Headset / Jack Detection**: TS3A227E detector
+            - **Haptics**: Dual TI DRV2604 motors with clean ACPI / I2C binding
+            - **Camera**: AtomISP raw Bayer + WV517S lens actuator
+            - **LTE / SSIC**: Intel XMM7260 power driver + xHCI SSIC state restore
+            - **Power & Charging**: BQ25890 fast charging + power supply core fix
           files: /home/runner/staging/output/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
