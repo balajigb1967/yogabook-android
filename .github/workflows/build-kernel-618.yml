@@ -13,6 +13,8 @@ jobs:
     name: Build Patched Kernel 6.18 (Zenith + Yoga Book RT5677)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout yogabook-android

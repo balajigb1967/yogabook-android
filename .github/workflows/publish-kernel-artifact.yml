@@ -1,0 +1,90 @@
+name: Publish Built Kernel Artifact
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/publish-kernel-artifact.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish Kernel 6.18 Release and Mirror
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Artifact from Run 39585553776
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39585553776
+          name: yogabook-kernel-6.18-6.18.12-zenith-gcb34ae445c04-dirty
+          path: staging
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List Files
+        run: |
+          ls -lah staging/
+
+      - name: Upload to GoFile Mirror
+        id: gofile
+        run: |
+          python3 - << 'EOF'
+          import os, sys, json, subprocess, urllib.request
+
+          def upload_file(path):
+              try:
+                  req = urllib.request.Request("https://api.gofile.io/servers", headers={"User-Agent": "Mozilla/5.0"})
+                  with urllib.request.urlopen(req, timeout=15) as r:
+                      server = json.loads(r.read().decode())["data"]["servers"][0]["name"]
+                  upload_url = f"https://{server}.gofile.io/contents/uploadfile"
+                  cmd = ["curl", "-sS", "--max-time", "600", "-F", f"file=@{path}", upload_url]
+                  res = subprocess.check_output(cmd).decode()
+                  data = json.loads(res)
+                  if data.get("status") == "ok":
+                      return data["data"]["downloadPage"]
+              except Exception as e:
+                  print(f"Error uploading {path}: {e}", file=sys.stderr)
+              return None
+
+          links = []
+          for fname in os.listdir("staging"):
+              fpath = os.path.join("staging", fname)
+              if os.path.isfile(fpath):
+                  print(f"Uploading {fname} to GoFile...")
+                  link = upload_file(fpath)
+                  print(f"  -> {link}")
+                  links.append(f"- **{fname}**: {link}")
+
+          summary_text = "\n### GoFile Direct Download Links:\n" + "\n".join(links) + "\n"
+          summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_file:
+              with open(summary_file, "a") as f:
+                  f.write(summary_text)
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kernel-6.18.12-zenith-rt5677-ksu
+          name: "Yoga Book Kernel 6.18.12 - RT5677 Audio, Haptics & KernelSU"
+          body: |
+            ## Yoga Book Patched Kernel 6.18.12 (Zenith Android-x86)
+            Fully compiled Linux kernel 6.18 with all Yoga Book hardware drivers and KernelSU.
+
+            ### Features Included:
+            - **CONFIG_CPUSETS=y**: Fixes Android 16 cgroup freeze / crash on boot.
+            - **Audio Codec**: Realtek RT5677 + Intel SST Cherry Trail DSP machine driver (`snd-soc-sst-cht-rt5677`).
+            - **Headset / Jack Detection**: TS3A227E detector enabled.
+            - **Haptics**: Dual TI DRV2604 linear resonant actuators with clean ACPI / I2C binding.
+            - **Halo Keyboard**: `touch_keyboard_handler` support.
+            - **Camera**: AtomISP raw Bayer sensor support + WV517S lens actuator.
+            - **Modem & SSIC**: Intel XMM7260 power driver + xHCI SSIC state restore.
+            - **Charging & Sensors**: BQ25890 fast charging + lid/hinge sensors.
+            - **KernelSU**: Integrated directly into kernel for root and driver module hooking.
+          files: staging/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
