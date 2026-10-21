@@ -80,10 +80,20 @@ jobs:
                            --enable SND_SOC_INTEL_CHT_RT5677_MACH \
                            --enable SND_SOC_RT5677 \
                            --enable SND_SOC_RT5677_SPI \
+                           --enable SND_SOC_INTEL_SST_ACPI \
+                           --enable SND_SOC_INTEL_SST_ATOM_HIFI2_PLATFORM \
                            --enable INPUT_DRV260X \
                            --enable INTEL_CHT_MODEM \
                            --enable VIDEO_ATOMISP \
                            --enable VIDEO_WV517S \
+                           --enable BRCMUTIL \
+                           --enable BRCMFMAC \
+                           --enable BRCMFMAC_PCIE \
+                           --enable BRCMFMAC_PROTO_MSGBUF \
+                           --enable BT_BCM \
+                           --enable BT_HCIUART \
+                           --enable BT_HCIUART_BCM \
+                           --enable BT_HCIUART_H4 \
                            --disable DEBUG_INFO \
                            --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT \
                            --disable DEBUG_INFO_DWARF4 \
