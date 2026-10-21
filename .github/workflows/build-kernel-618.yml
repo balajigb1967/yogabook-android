@@ -66,7 +66,7 @@ jobs:
       - name: Configure Kernel with Yoga Book Fragment
         run: |
           cd $HOME/kernel-zenith
-          make x86_64_defconfig
+          make android-x86_64_defconfig
           # Merge Android x86 / Yoga Book config additions
           if [ -f "${GITHUB_WORKSPACE}/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config" ]; then
             bash scripts/kconfig/merge_config.sh -m .config "${GITHUB_WORKSPACE}/device/yogabook/YOGABOOK_x86_64/configs/kernel/yogabook.config"
@@ -77,6 +77,10 @@ jobs:
                            --enable KSU \
                            --enable KSU_DEBUG \
                            --enable KSU_X86_PATCH_SYSCALL_DISPATCHER \
+                           --enable TOUCHSCREEN_GOODIX \
+                           --enable TOUCHSCREEN_DMI \
+                           --enable HID_WACOM \
+                           --enable TABLET_USB_WACOM \
                            --enable SND_SOC_INTEL_CHT_RT5677_MACH \
                            --enable SND_SOC_RT5677 \
                            --enable SND_SOC_RT5677_SPI \
@@ -86,6 +90,9 @@ jobs:
                            --enable INTEL_CHT_MODEM \
                            --enable VIDEO_ATOMISP \
                            --enable VIDEO_WV517S \
+                           --enable CHARGER_BQ25890 \
+                           --enable BATTERY_BQ27XXX \
+                           --enable SENSORS_KXTJ9 \
                            --enable BRCMUTIL \
                            --enable BRCMFMAC \
                            --enable BRCMFMAC_PCIE \
